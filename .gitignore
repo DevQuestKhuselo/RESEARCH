@@ -1,0 +1,16 @@
+# Generated data / results (regenerable via scripts, not source)
+data/
+results/
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Model caches (if HF_HOME ever points inside the repo)
+.cache/
+
+# OS cruft
+.DS_Store
