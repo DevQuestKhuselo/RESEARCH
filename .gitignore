@@ -1,16 +1,7 @@
-# Generated data / results (regenerable via scripts, not source)
+# Generated raw data and logs (regenerable via scripts, not source)
 data/
-results/
 output/
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Model caches (if HF_HOME ever points inside the repo)
-.cache/
-
-# OS cruft
-.DS_Store
+# Note: results/ IS tracked -- these are actual experiment outputs
+# (translations, scores), not regenerable inputs, so they belong in
+# version control as part of the research record.
