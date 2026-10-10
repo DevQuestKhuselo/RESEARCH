@@ -15,6 +15,7 @@ PREFIX=${1:-baseline}
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate comet_eval
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
+source cluster_env.sh
 mkdir -p output
 
 python evaluate.py --results_dir results --output "scores_${PREFIX}_summary.csv" --pattern "${PREFIX}_*.csv"

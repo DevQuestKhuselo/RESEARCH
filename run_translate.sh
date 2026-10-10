@@ -16,6 +16,7 @@ PREFIX=${2:-baseline}
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate research
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
+source cluster_env.sh
 mkdir -p output results
 
 nvidia-smi --query-gpu=name,memory.total --format=csv

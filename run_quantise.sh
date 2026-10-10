@@ -14,7 +14,8 @@ BITS=${1:?usage: sbatch run_quantise.sh <4|8>}
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate research
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-mkdir -p output models
+source cluster_env.sh
+mkdir -p output
 
 nvidia-smi --query-gpu=name,memory.total --format=csv
 python quantise_gptq.py --bits "$BITS" --out_dir "models/llamax3-8b-gptq-${BITS}bit"
