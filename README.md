@@ -57,16 +57,20 @@ Low-resource translation directions will experience significantly larger degrada
 ├── results/                   # Baseline and compressed-model translation outputs + scores
 ├── build_flores_csvs.py       # Builds per-direction parallel CSVs from a local FLORES-200 copy
 ├── baseline_translate.py      # Runs baseline (uncompressed) translation with LLaMAX3-8B-Alpaca
-├── quantise_gptq.py           # GPTQ quantisation at 8-bit / 4-bit (WIP)
+├── quantise_gptq.py           # GPTQ quantisation at 8-bit / 4-bit (gptqmodel, multilingual calibration)
+├── run_all_baselines.py       # Translate all directions with any model (--model_path, --prefix)
+├── compute_degradation.py     # Relative degradation (Δ) vs baseline, by resource category
+├── run_quantise.sh / run_translate.sh / run_evaluate.sh   # SLURM jobs (see HPC_RUNBOOK.md)
 ├── prune_magnitude.py         # Magnitude-based pruning at 30% / 50% sparsity (WIP)
-├── evaluate.py                # Scores translations with BLEU / chrF++ / COMET / AfriCOMET (WIP)
+├── evaluate.py                # Scores translations with BLEU / chrF++ / COMET / AfriCOMET
 └── README.md
 ```
 
 ## Setup
 
 ```bash
-pip install torch transformers accelerate sacrebleu unbabel-comet auto-gptq
+pip install torch transformers accelerate sacrebleu gptqmodel   # translation + quantisation env
+pip install unbabel-comet                                          # separate evaluation env
 ```
 
 ### 1. Build the dataset
@@ -88,7 +92,9 @@ python baseline_translate.py \
 
 Repeat for each translation direction (en-fr, en-sw, en-zu, sw-en, zu-en).
 
-### 3. Apply compression and re-evaluate *(in progress)*
+### 3. Apply compression and re-evaluate
+
+See **[HPC_RUNBOOK.md](HPC_RUNBOOK.md)** for the full cluster workflow (setup, GPTQ quantisation, translation, scoring, Δ analysis).
 
 Quantisation and pruning scripts, along with the evaluation/scoring pipeline, are being added as the project progresses through the phases below.
 

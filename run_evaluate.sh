@@ -1,16 +1,22 @@
 #!/bin/bash
+# Scoring job. Usage (from the repo root):
+#   sbatch run_evaluate.sh            # baseline
+#   sbatch run_evaluate.sh gptq8
+#   sbatch run_evaluate.sh gptq4
 #SBATCH --partition=biggpu
 #SBATCH --time=02:00:00
-#SBATCH --job-name=evaluate-baseline
-#SBATCH -o /home-mscluster/tmhizha/RESEARCH/output/eval.%N.%j.out
-#SBATCH -e /home-mscluster/tmhizha/RESEARCH/output/eval.%N.%j.err
+#SBATCH --job-name=evaluate
+#SBATCH -o output/%x.%N.%j.out
+#SBATCH -e output/%x.%N.%j.err
+
+set -euo pipefail
+PREFIX=${1:-baseline}
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate comet_eval
-
-cd ~/RESEARCH
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
 mkdir -p output
 
-python evaluate.py --results_dir results --output scores_baseline_summary.csv --pattern "baseline_*.csv"
+python evaluate.py --results_dir results --output "scores_${PREFIX}_summary.csv" --pattern "${PREFIX}_*.csv"
 
-echo "Evaluation job finished."
+echo "Evaluation job [$PREFIX] finished."

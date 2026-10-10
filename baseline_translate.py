@@ -44,11 +44,21 @@ def prompt_template(query, src_language, trg_language):
     return prompt
 
 
-def load_model(dtype=torch.float16, device_map="auto"):
-    print(f"Loading {MODEL_ID} ...")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map="auto"):
+    """Load the base model (default) or a compressed checkpoint directory.
+
+    GPTQ checkpoints saved by quantise_gptq.py carry a `quantization_config`
+    in config.json; with `gptqmodel` installed, Transformers loads them
+    through the same from_pretrained call, so the generation code is
+    identical for baseline and quantised runs.
+    """
+    print(f"Loading {model_path} ...")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+    except (OSError, ValueError):
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, torch_dtype=dtype, device_map=device_map
+        model_path, torch_dtype=dtype, device_map=device_map
     )
     model.eval()
     return tokenizer, model

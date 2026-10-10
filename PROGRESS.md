@@ -232,11 +232,21 @@ Not yet implemented: `prune_magnitude.py` (magnitude-based pruning, per proposal
 
 ---
 
-## 11. Immediate Next Steps
+## 11. Update (10 Oct 2026): quantisation code committed
 
-1. Install `gptqmodel` in the `research` conda environment.
-2. Run `run_quantise.sh` to produce 8-bit and 4-bit GPTQ-quantised checkpoints.
-3. Run translation (`run_all_baselines.py --model_path ... --prefix ...`) and evaluation against both quantised models.
-4. Compute relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
+`quantise_gptq.py`, described in §8, had not been pushed to GitHub. It has been rewritten against the current GPT-QModel API (v7.x, `GPTQModel.load` → `quantize` → `save`) and committed, with:
+
+- Balanced calibration: 32 FLORES `dev` sentences per language, with **disjoint sentence IDs across languages**, IDs saved to `calibration_ids.json`. Since calibration uses `dev`, **`devtest` is the headline split** for compressed models.
+- `run_all_baselines.py` now takes `--model_path` / `--prefix`, skips a direction only if its output has the full row count (fixes the §7 bug), and logs latency, tokens/s and GPU memory to `results/efficiency_{prefix}.csv`.
+- `compute_degradation.py` computes absolute and relative Δ per direction, split and metric, averaged by resource category.
+- SLURM scripts no longer hardcode another user's home path; they run from the submit directory under any account. `run_baseline_all.sh` is replaced by the general `run_translate.sh`.
+- `HPC_RUNBOOK.md` documents moving to the author's own cluster account (§4.1 risk) and the full quantisation workflow.
+
+## 12. Immediate Next Steps
+
+1. Set up own cluster account and install `gptqmodel` (HPC_RUNBOOK.md §1).
+2. `sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`.
+3. `sbatch run_translate.sh models/llamax3-8b-gptq-{8,4}bit gptq{8,4}`, then `sbatch run_evaluate.sh gptq{8,4}`.
+4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
 5. Implement magnitude-based pruning (`prune_magnitude.py`) at 30% and 50% sparsity, and repeat translation/evaluation.
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).

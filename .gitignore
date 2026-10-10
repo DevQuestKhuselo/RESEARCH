@@ -6,3 +6,8 @@ output/
 # (translations, scores), not regenerable inputs, so they belong in
 # version control as part of the research record.
 
+
+# Quantised / pruned checkpoints (multi-GB, regenerable)
+models/
+__pycache__/
+*.pyc
