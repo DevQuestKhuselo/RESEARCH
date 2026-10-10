@@ -18,11 +18,15 @@ git is the single source of truth, so prefer `git push` / `git pull`.
 not in your home directory. This project downloads a ~16 GB base model and writes ~6 GB (4-bit) and
 ~9 GB (8-bit) checkpoints. The job scripts source `cluster_env.sh`, which detects whichever of those
 folders you can write to, puts the HuggingFace cache there, and makes `models/` a symlink into it.
-Check they exist for you:
-```bash
-ls -ld /gluster/$USER /datasets/$USER
-```
-If neither exists, ask the cluster admins to create one before running the quantisation jobs.
+On the MS cluster **`/gluster` does not exist** (checked 10 Oct 2026); `/datasets/<username>/`
+does (owner-only, 377 TB volume), so the scripts use `/datasets/$USER/hf_cache` and
+`/datasets/$USER/RESEARCH-models`. Check yours with `ls -ld /datasets/$USER`.
+
+**Hardware (biggpu, 10 Oct 2026):** 7 nodes (mscluster106–112), ~122 GB RAM each, NVIDIA RTX PRO 6000
+Blackwell 96 GB (sm_120), driver 595.71.05 / CUDA 13.2. GPUs are **not** requested with `--gres`
+(GRES is `(null)`); asking for the partition is enough. Some nodes had faulty GPUs (110, 111) or were
+down (108); the job scripts exclude them and run `gpu_preflight.sh`, which fails a job within seconds
+if the GPU is unusable. Edit the `--exclude` line once the admins fix those nodes.
 
 ## 1. One-time setup on your own account
 
@@ -44,8 +48,12 @@ git config user.email "sofohlo.k@gmail.com"
 
 ### 1b. Conda environments
 
+Miniconda may already be installed: check `ls ~/miniconda3` first and skip the install if so.
+Accept the channel terms **before** `conda create`. Setuptools is pinned at creation so pip
+does not later downgrade it mid-install (that caused a harmless but alarming
+`BadMetadata ... invalid metadata entry 'version'` traceback during the first setup).
 ```bash
-# Miniconda, if not already installed on your account
+# Miniconda, only if ~/miniconda3 does not exist
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh -b -p ~/miniconda3
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -53,16 +61,26 @@ conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/ma
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # Translation + quantisation env (Blackwell-safe torch, see PROGRESS.md §4.3)
-conda create -y -n research python=3.11
+conda create -y -n research python=3.11 "setuptools<81"
 conda activate research
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip install transformers accelerate sacrebleu
-pip install -v gptqmodel           # first GPU use JIT-compiles kernels (needs ninja, pulled in)
+pip install transformers accelerate sacrebleu requests
 conda deactivate
 
+# gptqmodel: install INSIDE a GPU session so it builds against the torch above.
+# Pick a healthy node (see Hardware above); kernels may still JIT-compile on first use.
+srun --partition=biggpu --exclude=mscluster[108,110-111] --time=00:45:00 --pty bash -i
+source ~/miniconda3/etc/profile.d/conda.sh && conda activate research
+nvidia-smi                          # real values, not ERR!, before continuing
+pip install -v gptqmodel --no-build-isolation
+python -c "import torch, gptqmodel; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+exit
+
 # Evaluation env (kept separate, see PROGRESS.md §6.2)
-conda create -y -n comet_eval python=3.11
+conda create -y -n comet_eval python=3.11 "setuptools<81"
 conda activate comet_eval
+# Plain pip pulls a CUDA 13 (cu130) torch here. The driver supports it, and it only affects
+# scoring, which is why section 4 re-scores the baseline in this same environment.
 pip install --only-binary=:all: numpy==1.26.4
 pip install unbabel-comet sacrebleu "setuptools<81"
 conda deactivate
@@ -70,17 +88,16 @@ conda deactivate
 
 ### 1c. Data
 
-`data/` is gitignored, so rebuild it from the FLORES copy that *is* in the repo:
-```bash
-conda activate research && python build_flores_csvs.py flores200_dataset && conda deactivate
-```
+The ten `data/flores200_*.csv` files are tracked in the repo and complete (997 dev / 1012 devtest
+rows each), so nothing needs building. Only if they are missing, rebuild them inside an `srun`
+session (not on the login node): `python build_flores_csvs.py flores200_dataset`.
 Baseline translations and scores are already in the repo (`results/`, `scores_baseline_summary.csv`),
 so the baseline does **not** need re-running.
 
 ### 1d. HuggingFace
 
 LLaMAX3-8B-Alpaca is ungated, so no login is needed. The job scripts set `HF_HOME` to your
-`/gluster` (or `/datasets`) folder automatically via `cluster_env.sh`.
+`/datasets/$USER` folder automatically via `cluster_env.sh`.
 
 ### 1e. Moving off your friend's account
 
@@ -101,13 +118,21 @@ nothing needs re-running. Before you stop using their account:
 
 ## 2. Quantise (one job per bit-width)
 
+Before the first submission, check the job scripts' conda handling once (login node, no Python run):
+```bash
+bash -c 'set -euo pipefail; source ~/miniconda3/etc/profile.d/conda.sh; conda activate research; echo ok'
+```
 ```bash
 cd ~/RESEARCH
 sbatch run_quantise.sh 8
 sbatch run_quantise.sh 4
 squeue --me                          # PD = pending, R = running
+squeue -p biggpu -o "%.8i %.10u %.12L %N"   # time left on other users' jobs
 tail -f output/gptq-quantise.*.out
 ```
+Each log should start with `Large files -> /datasets/<you>`, the node name, a real `nvidia-smi`
+line, then `GPU OK: NVIDIA RTX PRO 6000 Blackwell ...`. Watch the first run for kernel-build messages:
+gptqmodel was installed on a node whose GPU was broken, so its kernels compile on first real use.
 Each job writes `models/llamax3-8b-gptq-{8,4}bit/` plus `calibration_ids.json` (calibration sentence
 IDs, quantisation time, checkpoint size). GPTQ loads the fp16 model to CPU RAM and quantises layer by
 layer on the GPU; if a job is killed for memory, add `#SBATCH --mem=64G` to `run_quantise.sh`.
@@ -115,8 +140,9 @@ layer on the GPU; if a job is killed for memory, add `#SBATCH --mem=64G` to `run
 Optional sanity check that a checkpoint loads and translates, before the multi-hour run.
 Open an interactive GPU session first (handbook §2.2), and cancel it when finished:
 ```bash
-srun --partition=biggpu --nodes=1 --ntasks=1 --time=00:30:00 --pty bash -i
-conda activate research && cd ~/RESEARCH && source cluster_env.sh
+srun --partition=biggpu --exclude=mscluster[108,110-111] --nodes=1 --ntasks=1 --time=00:30:00 --pty bash -i
+nvidia-smi                            # must show real values; ERR! or "No devices" = broken node
+source ~/miniconda3/etc/profile.d/conda.sh && conda activate research && cd ~/RESEARCH && source cluster_env.sh
 python -c "from baseline_translate import *; t,m=load_model('models/llamax3-8b-gptq-4bit'); \
 print(translate_one(t,m,'Good morning, how are you?','English','Zulu'))"
 exit                                  # then check `squeue --me` and `scancel <jobid>` if still listed
@@ -138,7 +164,11 @@ from the same GPU model; re-run the baseline translation for timing on that GPU 
 
 ## 4. Score and compute degradation
 
+Re-score the baseline in your `comet_eval` environment first, so baseline and compressed scores come
+from identical scoring software (the committed baseline scores were produced on the old account,
+possibly with different COMET/torch versions):
 ```bash
+sbatch run_evaluate.sh baseline      # overwrites scores_baseline_summary.csv; compare with git diff
 sbatch run_evaluate.sh gptq8
 sbatch run_evaluate.sh gptq4
 # after both finish: lightweight, but per the handbook not on the login node.

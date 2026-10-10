@@ -3,7 +3,7 @@
 **Author:** Khuselo Sofohlo
 **Supervisors:** Dr Steven James, Prof Benjamin Rosman
 **Report covers:** Proposal validation → environment setup → dataset acquisition → baseline translation pipeline → baseline evaluation results
-**Status at time of writing:** Baseline (uncompressed) results complete for all five translation directions. GPTQ quantisation setup in progress, not yet executed.
+**Status at time of writing:** Baseline (uncompressed) results complete for all five translation directions. GPTQ quantisation code complete and own cluster account set up (§11–12); quantisation jobs not yet run.
 
 ---
 
@@ -242,11 +242,39 @@ Not yet implemented: `prune_magnitude.py` (magnitude-based pruning, per proposal
 - SLURM scripts no longer hardcode another user's home path; they run from the submit directory under any account. `run_baseline_all.sh` is replaced by the general `run_translate.sh`.
 - `HPC_RUNBOOK.md` documents moving to the author's own cluster account (§4.1 risk) and the full quantisation workflow.
 
-## 12. Immediate Next Steps
+## 12. Own cluster account set up (10 Oct 2026)
 
-1. Set up own cluster account and install `gptqmodel` (HPC_RUNBOOK.md §1).
+The §4.1 risk is resolved: work now runs under the author's own MS cluster account (`ksofohlo`).
+
+**Storage.** `/gluster` does not exist on the MS cluster, despite the handbook mentioning it. `/datasets/ksofohlo` (owner-only, 377 TB NFS volume) holds the HuggingFace cache and model checkpoints via `cluster_env.sh`, keeping multi-GB files out of the home directory.
+
+**Hardware.** biggpu has 7 nodes (mscluster106–112) with ~122 GB RAM and an NVIDIA RTX PRO 6000 Blackwell 96 GB GPU (driver 595.71.05, CUDA 13.2). SLURM GRES is `(null)`, consistent with §4.2.
+
+**Faulty-node incident.** At 22:48 the only idle GPU nodes were broken: on mscluster110 `nvidia-smi` found no device (job 66708), and on mscluster111 every GPU field read `ERR!` and torch saw no GPU (job 66709). mscluster108 was down. These were reported to the cluster admins. The job scripts now exclude these nodes (temporary) and run `gpu_preflight.sh`, which allocates a tensor on the GPU and fails the job in seconds rather than hours into a run.
+
+**Environments** (versions recorded for reproducibility):
+
+| Env | Key versions |
+|---|---|
+| `research` (translate, quantise) | Python 3.11, torch 2.11.0+cu128, transformers 5.19.0, accelerate 1.15.0, gptqmodel 7.5.0, sacrebleu 2.6.0, numpy 2.4.6 |
+| `comet_eval` (score) | Python 3.11, torch 2.14.1+cu130, unbabel-comet 2.2.7, transformers 4.57.6, pytorch-lightning 2.6.6, numpy 1.26.4, setuptools 80.10.2 |
+
+**Setup issues and fixes.**
+
+| Issue | Fix |
+|---|---|
+| pip printed a `BadMetadata ... invalid metadata entry 'version'` traceback after downgrading conda's setuptools 84 | Harmless; packages installed and import correctly. Runbook now pins `setuptools<81` at `conda create` |
+| `import gptqmodel` failed: `No module named 'requests'` | `pip install requests`; added to the runbook |
+| gptqmodel installed with `--no-build-isolation` (to build against the existing torch) on a node with a broken GPU | Kernels will compile on first real GPU use; watch the first quantise log |
+| `set -euo pipefail` before `conda activate` could kill jobs if an activate hook reads an unset variable | `set -u` now enabled only after activation |
+
+**Reproducibility.** The committed baseline scores were produced on the previous account, possibly with different COMET/torch versions. The baseline will be re-scored in the new `comet_eval` environment so baseline and compressed scores come from identical scoring software. The GPU used for baseline translation timing is not recorded; if it was not an RTX PRO 6000 Blackwell, baseline timing is re-run on that GPU before efficiency comparisons.
+
+## 13. Immediate Next Steps
+
+1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
 2. `sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`.
-3. `sbatch run_translate.sh models/llamax3-8b-gptq-{8,4}bit gptq{8,4}`, then `sbatch run_evaluate.sh gptq{8,4}`.
+3. `sbatch run_translate.sh models/llamax3-8b-gptq-{8,4}bit gptq{8,4}`, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
 4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
 5. Implement magnitude-based pruning (`prune_magnitude.py`) at 30% and 50% sparsity, and repeat translation/evaluation.
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).

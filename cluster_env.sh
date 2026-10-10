@@ -1,6 +1,8 @@
 # Sourced by the SLURM job scripts. Keeps multi-GB files out of $HOME, as the
 # MS cluster handbook (Wang, 2025, sec. 3.2) asks: big data goes in
-# /gluster/<username>/ or /datasets/<username>/.
+# /gluster/<username>/ or /datasets/<username>/. On the MS cluster
+# /gluster does not exist (checked 10 Oct 2026), so /datasets/$USER is used.
+USER="${USER:-$(id -un)}"
 for d in "/gluster/$USER" "/datasets/$USER"; do
   if [ -d "$d" ] && [ -w "$d" ]; then BIG_STORE="$d"; break; fi
 done
