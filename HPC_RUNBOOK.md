@@ -22,10 +22,13 @@ On the MS cluster **`/gluster` does not exist** (checked 10 Oct 2026); `/dataset
 does (owner-only, 377 TB volume), so the scripts use `/datasets/$USER/hf_cache` and
 `/datasets/$USER/RESEARCH-models`. Check yours with `ls -ld /datasets/$USER`.
 
-**Hardware (biggpu, 10 Oct 2026):** 7 nodes (mscluster106–112), ~122 GB RAM each, NVIDIA RTX PRO 6000
-Blackwell 96 GB (sm_120), driver 595.71.05 / CUDA 13.2. GPUs are **not** requested with `--gres`
-(GRES is `(null)`); asking for the partition is enough. Some nodes had faulty GPUs (110, 111) or were
-down (108); the job scripts exclude them and run `gpu_preflight.sh`, which fails a job within seconds
+**Hardware (biggpu, Oct 2026):** 7 nodes (mscluster106–112), ~122 GB RAM each. GPUs are **mixed**:
+mscluster111 has an NVIDIA RTX PRO 6000 Blackwell 96 GB (sm_120, driver 595.71.05 / CUDA 13.2), while
+mscluster106 has a Quadro RTX 8000 48 GB (Turing, sm_75). Check `nvidia-smi` in each job log.
+mscluster106 is the node used for all timed runs in this project. GPUs are **not** requested with `--gres`
+(GRES is `(null)`); asking for the partition is enough. By 11 Oct 2026 nodes 110, 111 and 112 had faulty GPUs and
+107 and 108 were down or drained. The job scripts exclude these (`--exclude` on the `sbatch` command line
+overrides the list) and run `gpu_preflight.sh`, which fails a job within seconds
 if the GPU is unusable. Edit the `--exclude` line once the admins fix those nodes.
 
 ## 1. One-time setup on your own account
@@ -69,7 +72,7 @@ conda deactivate
 
 # gptqmodel: install INSIDE a GPU session so it builds against the torch above.
 # Pick a healthy node (see Hardware above); kernels may still JIT-compile on first use.
-srun --partition=biggpu --exclude=mscluster[108,110-111] --time=00:45:00 --pty bash -i
+srun --partition=biggpu --exclude=mscluster[107-108,110-112] --time=00:45:00 --pty bash -i
 source ~/miniconda3/etc/profile.d/conda.sh && conda activate research
 nvidia-smi                          # real values, not ERR!, before continuing
 pip install -v gptqmodel --no-build-isolation
@@ -140,7 +143,7 @@ layer on the GPU; if a job is killed for memory, add `#SBATCH --mem=64G` to `run
 Optional sanity check that a checkpoint loads and translates, before the multi-hour run.
 Open an interactive GPU session first (handbook §2.2), and cancel it when finished:
 ```bash
-srun --partition=biggpu --exclude=mscluster[108,110-111] --nodes=1 --ntasks=1 --time=00:30:00 --pty bash -i
+srun --partition=biggpu --exclude=mscluster[107-108,110-112] --nodes=1 --ntasks=1 --time=00:30:00 --pty bash -i
 nvidia-smi                            # must show real values; ERR! or "No devices" = broken node
 source ~/miniconda3/etc/profile.d/conda.sh && conda activate research && cd ~/RESEARCH && source cluster_env.sh
 python -c "from baseline_translate import *; t,m=load_model('models/llamax3-8b-gptq-4bit'); \
@@ -150,17 +153,46 @@ exit                                  # then check `squeue --me` and `scancel <j
 
 ## 3. Translate with the quantised models
 
+Use `--exclusive` and pin one node: GPUs are not SLURM-tracked here, so without `--exclusive` other
+jobs can share the GPU and distort latency. Run the fp16 model on the same node as the timing reference.
 ```bash
-sbatch run_translate.sh models/llamax3-8b-gptq-8bit gptq8
-sbatch run_translate.sh models/llamax3-8b-gptq-4bit gptq4
+sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-gptq-8bit gptq8
+sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-gptq-4bit gptq4
+sbatch --exclusive -w mscluster106 run_translate.sh LLaMAX/LLaMAX3-8B-Alpaca fp16
 ```
+If a job hits its 12-hour limit, resubmit the same command: complete directions are skipped.
+Use the prefix `fp16`, never `baseline_*`: `run_evaluate.sh baseline` scores every `baseline_*.csv`.
 Outputs `results/gptq{8,4}_{direction}_{split}.csv` and `results/efficiency_gptq{8,4}.csv`.
 Partial files are now detected by row count and re-translated (fix for PROGRESS.md §7).
 
 **Efficiency comparability:** latency/memory depend on the GPU. `nvidia-smi` output is at the top of
 each job log and the GPU name is recorded per row in `efficiency_*.csv`. Only compare efficiency rows
-from the same GPU model; re-run the baseline translation for timing on that GPU if needed
-(`sbatch run_translate.sh LLaMAX/LLaMAX3-8B-Alpaca baseline_timing`).
+from the same GPU model (the `fp16` run above is the reference). On the Turing RTX 8000, GPT-QModel
+cannot use its fastest (Ampere+) kernels, so quantised latency there is hardware-specific.
+
+## 3b. Magnitude pruning (separate phase)
+
+Pruning runs separately from quantisation, on the fp16 base model:
+```bash
+sbatch run_prune.sh 30          # -> models/llamax3-8b-mag30 (~15 GB, dense fp16 with zeros)
+sbatch run_prune.sh 50          # -> models/llamax3-8b-mag50
+# after both finish:
+sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-mag30 mag30
+sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-mag50 mag50
+sbatch run_evaluate.sh mag30
+sbatch run_evaluate.sh mag50
+cp models/llamax3-8b-mag30/pruning_meta.json results/mag30_pruning_meta.json
+cp models/llamax3-8b-mag50/pruning_meta.json results/mag50_pruning_meta.json
+```
+Each pruning job takes minutes (model load + save dominate). Pruning is **global** unstructured magnitude
+pruning over the transformer blocks' linear weights, as in the proposal; embeddings and the LM head are
+kept. `pruning_meta.json` records achieved sparsity per module type and per layer, since a global
+threshold prunes some layers far more than others. If 50% global pruning collapses output (empty or
+repeated text), run the per-matrix variant as a sensitivity check: `sbatch run_prune.sh 50 layer`
+(-> `models/llamax3-8b-mag50-layer`, translate with prefix `mag50layer`).
+
+Pruned checkpoints are stored dense, so size, memory and latency should be ~unchanged from fp16;
+report pruning's compression as non-zero parameter count, not file size.
 
 ## 4. Score and compute degradation
 
@@ -175,6 +207,8 @@ sbatch run_evaluate.sh gptq4
 # Run it on your laptop after `git pull`, or inside a short srun session:
 python compute_degradation.py --compressed scores_gptq8_summary.csv scores_gptq4_summary.csv \
   --output degradation_gptq.csv
+python compute_degradation.py --compressed scores_mag30_summary.csv scores_mag50_summary.csv \
+  --output degradation_pruning.csv
 ```
 The printed table gives mean relative Δ (%) per config × resource category on `devtest`.
 Use `devtest` as the headline split: GPTQ calibration sentences come from `dev`.

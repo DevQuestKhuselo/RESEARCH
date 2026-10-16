@@ -6,10 +6,11 @@
 #SBATCH --partition=biggpu
 #SBATCH --time=12:00:00
 #SBATCH --job-name=translate
-# TEMPORARY: nodes with faulty GPUs (110, 111) or down (108) on 10 Oct 2026.
+# TEMPORARY: nodes with faulty GPUs (110, 111, 112) or down/drained (107, 108)
+# as of 11 Oct 2026.
 # Remove nodes from this list once the admins fix them; excluding healthy
 # nodes only lengthens queue times.
-#SBATCH --exclude=mscluster[108,110-111]
+#SBATCH --exclude=mscluster[107-108,110-112]
 #SBATCH -o output/%x.%N.%j.out
 #SBATCH -e output/%x.%N.%j.err
 

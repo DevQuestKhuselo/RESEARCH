@@ -61,7 +61,7 @@ Low-resource translation directions will experience significantly larger degrada
 ├── run_all_baselines.py       # Translate all directions with any model (--model_path, --prefix)
 ├── compute_degradation.py     # Relative degradation (Δ) vs baseline, by resource category
 ├── run_quantise.sh / run_translate.sh / run_evaluate.sh   # SLURM jobs (see HPC_RUNBOOK.md)
-├── prune_magnitude.py         # Magnitude-based pruning at 30% / 50% sparsity (WIP)
+├── prune_magnitude.py         # Global unstructured magnitude pruning (30% / 50%), run_prune.sh
 ├── evaluate.py                # Scores translations with BLEU / chrF++ / COMET / AfriCOMET
 └── README.md
 ```

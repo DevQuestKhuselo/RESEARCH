@@ -228,7 +228,7 @@ Full baseline (uncompressed) results obtained across all five translation direct
 └── README.md
 ```
 
-Not yet implemented: `prune_magnitude.py` (magnitude-based pruning, per proposal §4.6).
+`prune_magnitude.py` (magnitude-based pruning, per proposal §4.6) was added later; see §13.
 
 ---
 
@@ -248,7 +248,7 @@ The §4.1 risk is resolved: work now runs under the author's own MS cluster acco
 
 **Storage.** `/gluster` does not exist on the MS cluster, despite the handbook mentioning it. `/datasets/ksofohlo` (owner-only, 377 TB NFS volume) holds the HuggingFace cache and model checkpoints via `cluster_env.sh`, keeping multi-GB files out of the home directory.
 
-**Hardware.** biggpu has 7 nodes (mscluster106–112) with ~122 GB RAM and an NVIDIA RTX PRO 6000 Blackwell 96 GB GPU (driver 595.71.05, CUDA 13.2). SLURM GRES is `(null)`, consistent with §4.2.
+**Hardware.** biggpu has 7 nodes (mscluster106–112) with ~122 GB RAM. GPUs are mixed: mscluster111 has an NVIDIA RTX PRO 6000 Blackwell 96 GB (driver 595.71.05, CUDA 13.2), but mscluster106, where all quantisation and timed translation ran, has a **Quadro RTX 8000 48 GB** (Turing, sm_75), as recorded in the quantisation metadata. SLURM GRES is `(null)`, consistent with §4.2.
 
 **Faulty-node incident.** At 22:48 the only idle GPU nodes were broken: on mscluster110 `nvidia-smi` found no device (job 66708), and on mscluster111 every GPU field read `ERR!` and torch saw no GPU (job 66709). mscluster108 was down. These were reported to the cluster admins. The job scripts now exclude these nodes (temporary) and run `gpu_preflight.sh`, which allocates a tensor on the GPU and fails the job in seconds rather than hours into a run.
 
@@ -268,13 +268,30 @@ The §4.1 risk is resolved: work now runs under the author's own MS cluster acco
 | gptqmodel installed with `--no-build-isolation` (to build against the existing torch) on a node with a broken GPU | Kernels will compile on first real GPU use; watch the first quantise log |
 | `set -euo pipefail` before `conda activate` could kill jobs if an activate hook reads an unset variable | `set -u` now enabled only after activation |
 
-**Reproducibility.** The committed baseline scores were produced on the previous account, possibly with different COMET/torch versions. The baseline will be re-scored in the new `comet_eval` environment so baseline and compressed scores come from identical scoring software. The GPU used for baseline translation timing is not recorded; if it was not an RTX PRO 6000 Blackwell, baseline timing is re-run on that GPU before efficiency comparisons.
+**Reproducibility.** The committed baseline scores were produced on the previous account, possibly with different COMET/torch versions. The baseline will be re-scored in the new `comet_eval` environment so baseline and compressed scores come from identical scoring software. The original baseline run recorded no timing, so the fp16 model is re-run on mscluster106 (prefix `fp16`) as the timing reference; all timed runs use `--exclusive` on that one node because GPUs are not SLURM-tracked and could otherwise be shared.
 
-## 13. Immediate Next Steps
+## 13. GPTQ quantisation run and pruning code (11–17 Oct 2026)
+
+**Further node failures.** The first quantisation jobs (66719, 66720) landed on mscluster112, whose GPU also reported "No devices were found"; `gpu_preflight.sh` stopped both within 10 seconds. mscluster107 was then down or drained. Jobs were resubmitted excluding 107, 108 and 110–112.
+
+**Quantisation results** (jobs 67056/67057, mscluster106, Quadro RTX 8000, gptqmodel 7.5.0, group size 128, seed 42, identical calibration set for both):
+
+| Model | Checkpoint size | Compression vs fp16 (~15.0 GiB) | Quantisation time | Peak GPU memory |
+|---|---|---|---|---|
+| GPTQ 8-bit | 8.63 GiB | ~1.7× | 11.6 min | 3.76 GB |
+| GPTQ 4-bit | 5.36 GiB | ~2.8× | 8.4 min | 3.76 GB |
+
+Compression is below the nominal 2×/4× because only the transformer blocks are quantised: the input embeddings and LM head stay fp16 and, with Llama-3's 128,256-token vocabulary, total ~2 GiB. Metadata is in `results/gptq{8,4}_quantisation_meta.json`.
+
+**Hardware caveat for latency.** On Turing, GPT-QModel falls back from its fastest (Ampere+) kernels, so quantised-model latency measured here is hardware-specific and may not improve on fp16; memory and size reductions are hardware-independent.
+
+**Pruning code.** `prune_magnitude.py` implements the proposal's global unstructured magnitude pruning, run as its own phase (`run_prune.sh 30|50`). Design choices: only the linear weights inside the transformer blocks are pruned (embeddings, LM head and norms are kept); one global threshold, found by bisection rather than sorting ~7B values; per-module and per-layer achieved sparsity saved in `pruning_meta.json`, because a global threshold prunes layers unevenly; an optional per-matrix (`layer`) scope as a sensitivity check. Verified on a small Llama model: target sparsity reached, surviving weights unchanged, embeddings/LM head/norms untouched, checkpoint reloads and runs through the translation pipeline. Pruned checkpoints are dense fp16, so pruning's efficiency is reported as non-zero parameters rather than size or latency.
+
+## 14. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
-2. `sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`.
-3. `sbatch run_translate.sh models/llamax3-8b-gptq-{8,4}bit gptq{8,4}`, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
+2. ~~`sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`~~ (done, §13).
+3. `sbatch --exclusive -w mscluster106 run_translate.sh ...` for gptq8, gptq4 and fp16 (submitted 17 Oct, jobs 69601–69603), then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
 4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
-5. Implement magnitude-based pruning (`prune_magnitude.py`) at 30% and 50% sparsity, and repeat translation/evaluation.
+5. ~~Implement magnitude pruning~~ (done, §13). Run `sbatch run_prune.sh 30` and `50`, then translate (`mag30`, `mag50`) and evaluate (HPC_RUNBOOK.md §3b).
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).
