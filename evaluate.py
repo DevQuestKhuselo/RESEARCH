@@ -17,6 +17,7 @@ import argparse
 import csv
 import glob
 import os
+import time
 
 import sacrebleu
 from comet import download_model, load_from_checkpoint
@@ -48,7 +49,7 @@ def read_triples(path):
     return sources, references, hypotheses
 
 
-def score_file(path, comet_model, africomet_model):
+def score_file(path, comet_model, africomet_model, batch_size=32):
     sources, references, hypotheses = read_triples(path)
 
     # BLEU (sacrebleu expects references as list-of-lists: one list per ref set)
@@ -63,8 +64,8 @@ def score_file(path, comet_model, africomet_model):
         for s, h, r in zip(sources, hypotheses, references)
     ]
 
-    comet_result = comet_model.predict(comet_data, batch_size=8, gpus=1)
-    africomet_result = africomet_model.predict(comet_data, batch_size=8, gpus=1)
+    comet_result = comet_model.predict(comet_data, batch_size=batch_size, gpus=1, progress_bar=False)
+    africomet_result = africomet_model.predict(comet_data, batch_size=batch_size, gpus=1, progress_bar=False)
 
     return {
         "bleu": bleu.score,
@@ -74,29 +75,57 @@ def score_file(path, comet_model, africomet_model):
     }
 
 
-def run(results_dir, output_csv, pattern="baseline_*.csv"):
+FIELDS = ["file", "bleu", "chrf++", "comet", "africomet"]
+
+
+def read_partial(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return {row["file"]: row for row in csv.DictReader(f)}
+
+
+def run(results_dir, output_csv, pattern="baseline_*.csv", batch_size=32):
+    """Scores each file and appends it to {output_csv}.partial immediately, so a
+    job that hits its time limit loses at most one file. Resubmitting the same
+    command skips files already in the .partial file. The final summary is
+    written to output_csv only once every file is scored (so an interrupted
+    re-score never half-overwrites an existing summary)."""
     files = sorted(glob.glob(os.path.join(results_dir, pattern)))
     if not files:
         print(f"No files matching {pattern} found in {results_dir}")
         return
 
-    comet_model, africomet_model = load_comet_models()
+    partial_csv = output_csv + ".partial"
+    done = read_partial(partial_csv)
+    todo = [p for p in files if os.path.basename(p) not in done]
+    print(f"{len(files)} files match {pattern}: {len(done)} already scored, {len(todo)} to do")
 
-    rows = []
-    for path in files:
-        filename = os.path.basename(path)
-        print(f"\nScoring {filename} ...")
-        scores = score_file(path, comet_model, africomet_model)
-        scores["file"] = filename
-        rows.append(scores)
-        print(f"  BLEU={scores['bleu']:.2f}  chrF++={scores['chrf++']:.2f}  "
-              f"COMET={scores['comet']:.4f}  AfriCOMET={scores['africomet']:.4f}")
+    if todo:
+        comet_model, africomet_model = load_comet_models()
+        for path in todo:
+            filename = os.path.basename(path)
+            print(f"\nScoring {filename} ...", flush=True)
+            t0 = time.time()
+            scores = score_file(path, comet_model, africomet_model, batch_size)
+            scores["file"] = filename
+            new_file = not os.path.exists(partial_csv)
+            with open(partial_csv, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=FIELDS)
+                if new_file:
+                    writer.writeheader()
+                writer.writerow(scores)
+            done[filename] = scores
+            print(f"  BLEU={scores['bleu']:.2f}  chrF++={scores['chrf++']:.2f}  "
+                  f"COMET={scores['comet']:.4f}  AfriCOMET={scores['africomet']:.4f}  "
+                  f"({time.time() - t0:.0f}s)", flush=True)
 
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["file", "bleu", "chrf++", "comet", "africomet"])
+        writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
-        writer.writerows(rows)
-
+        for path in files:
+            writer.writerow({k: done[os.path.basename(path)][k] for k in FIELDS})
+    os.remove(partial_csv)
     print(f"\nWrote summary to {output_csv}")
 
 
@@ -107,6 +136,8 @@ if __name__ == "__main__":
     parser.add_argument("--pattern", default="baseline_*.csv",
                          help="Glob pattern to select which result files to score "
                               "(e.g. 'quantised_8bit_*.csv' later on)")
+    parser.add_argument("--batch_size", type=int, default=32,
+                        help="COMET batch size (was 8; larger is faster on a big GPU)")
     args = parser.parse_args()
 
-    run(args.results_dir, args.output, args.pattern)
+    run(args.results_dir, args.output, args.pattern, args.batch_size)

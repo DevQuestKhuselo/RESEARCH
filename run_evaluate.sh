@@ -3,8 +3,9 @@
 #   sbatch run_evaluate.sh            # baseline
 #   sbatch run_evaluate.sh gptq8
 #   sbatch run_evaluate.sh gptq4
+# If it hits the time limit, resubmit the same command: finished files are kept.
 #SBATCH --partition=biggpu
-#SBATCH --time=02:00:00
+#SBATCH --time=08:00:00
 #SBATCH --job-name=evaluate
 # TEMPORARY: nodes with faulty GPUs (110, 111, 112) or down/drained (107, 108)
 # as of 11 Oct 2026.

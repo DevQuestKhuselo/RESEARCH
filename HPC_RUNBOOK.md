@@ -153,15 +153,28 @@ exit                                  # then check `squeue --me` and `scancel <j
 
 ## 3. Translate with the quantised models
 
-Use `--exclusive` and pin one node: GPUs are not SLURM-tracked here, so without `--exclusive` other
-jobs can share the GPU and distort latency. Run the fp16 model on the same node as the timing reference.
+Quality and timing are measured in **separate** jobs. Full quality runs go on any working GPU node.
+A request for an exclusive, pinned node sat pending for over 22 hours (17 Oct 2026), so exclusivity is
+kept for short timing benchmarks only.
+
+**Quality** (full dev + devtest, scored later):
 ```bash
-sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-gptq-8bit gptq8
-sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-gptq-4bit gptq4
-sbatch --exclusive -w mscluster106 run_translate.sh LLaMAX/LLaMAX3-8B-Alpaca fp16
+sbatch run_translate.sh models/llamax3-8b-gptq-8bit gptq8
+sbatch run_translate.sh models/llamax3-8b-gptq-4bit gptq4
 ```
 If a job hits its 12-hour limit, resubmit the same command: complete directions are skipped.
-Use the prefix `fp16`, never `baseline_*`: `run_evaluate.sh baseline` scores every `baseline_*.csv`.
+
+**Timing** (first 100 devtest sentences per direction, ~15–30 min per model; the 1-hour limit lets SLURM fit
+it into gaps between other jobs). GPUs are not SLURM-tracked
+here, so `--exclusive` is what stops other jobs sharing the GPU and distorting latency; run every model
+on the same node:
+```bash
+sbatch --exclusive -w mscluster106 run_timing.sh LLaMAX/LLaMAX3-8B-Alpaca fp16
+sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-gptq-8bit gptq8
+sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-gptq-4bit gptq4
+```
+Report latency and memory from `results/efficiency_timing_*.csv` only; the `efficiency_<prefix>.csv`
+files from the quality runs were measured on shared GPUs.
 Outputs `results/gptq{8,4}_{direction}_{split}.csv` and `results/efficiency_gptq{8,4}.csv`.
 Partial files are now detected by row count and re-translated (fix for PROGRESS.md §7).
 
@@ -177,8 +190,8 @@ Pruning runs separately from quantisation, on the fp16 base model:
 sbatch run_prune.sh 30          # -> models/llamax3-8b-mag30 (~15 GB, dense fp16 with zeros)
 sbatch run_prune.sh 50          # -> models/llamax3-8b-mag50
 # after both finish:
-sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-mag30 mag30
-sbatch --exclusive -w mscluster106 run_translate.sh models/llamax3-8b-mag50 mag50
+sbatch run_translate.sh models/llamax3-8b-mag30 mag30
+sbatch run_translate.sh models/llamax3-8b-mag50 mag50
 sbatch run_evaluate.sh mag30
 sbatch run_evaluate.sh mag50
 cp models/llamax3-8b-mag30/pruning_meta.json results/mag30_pruning_meta.json
@@ -192,9 +205,14 @@ repeated text), run the per-matrix variant as a sensitivity check: `sbatch run_p
 (-> `models/llamax3-8b-mag50-layer`, translate with prefix `mag50layer`).
 
 Pruned checkpoints are stored dense, so size, memory and latency should be ~unchanged from fp16;
-report pruning's compression as non-zero parameter count, not file size.
+report pruning's compression as non-zero parameter count, not file size. A timing benchmark
+(`run_timing.sh ... mag50`) is optional and should confirm latency is ~unchanged from fp16.
 
 ## 4. Score and compute degradation
+
+Scoring saves each file to `scores_<prefix>_summary.csv.partial` as it finishes; if a job hits its
+8-hour limit, resubmit the same command and only unscored files are redone. The summary CSV is written
+only when all files are scored, so an interrupted re-score never overwrites an existing summary.
 
 Re-score the baseline in your `comet_eval` environment first, so baseline and compressed scores come
 from identical scoring software (the committed baseline scores were produced on the old account,

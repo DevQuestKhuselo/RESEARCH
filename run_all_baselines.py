@@ -7,6 +7,9 @@ Usage:
     python run_all_baselines.py --model_path models/llamax3-8b-gptq-4bit --prefix gptq4
     python run_all_baselines.py --model_path models/llamax3-8b-gptq-8bit --prefix gptq8
 
+Timing benchmark (short, meant to run with sbatch --exclusive on one node):
+    python run_all_baselines.py --model_path ... --prefix timing_gptq4 --splits devtest --limit 100
+
 Outputs:
     results/{prefix}_{direction}_{split}.csv      source / reference / hypothesis
     results/efficiency_{prefix}.csv               latency, tokens/s, GPU memory
@@ -49,7 +52,7 @@ def is_complete(output_csv, expected_rows):
     return True
 
 
-def run_direction(tokenizer, model, prefix, direction, split):
+def run_direction(tokenizer, model, prefix, direction, split, limit=None):
     src, tgt = direction.split("-")
     src_lang, tgt_lang = LANG_NAMES[src], LANG_NAMES[tgt]
 
@@ -58,6 +61,8 @@ def run_direction(tokenizer, model, prefix, direction, split):
 
     with open(input_csv, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+    if limit:
+        rows = rows[:limit]
 
     if is_complete(output_csv, len(rows)):
         print(f"  Skipping {direction} ({split}) -- complete: {output_csv}")
@@ -101,6 +106,9 @@ def main():
                         help="HF model id or local checkpoint dir (default: base model)")
     parser.add_argument("--prefix", default="baseline",
                         help="Output file prefix, e.g. baseline, gptq8, gptq4")
+    parser.add_argument("--splits", nargs="+", default=SPLITS, choices=SPLITS)
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Only the first N sentences per direction (timing benchmarks)")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -112,8 +120,8 @@ def main():
 
     stats = []
     for direction in DIRECTIONS:
-        for split in SPLITS:
-            s = run_direction(tokenizer, model, args.prefix, direction, split)
+        for split in args.splits:
+            s = run_direction(tokenizer, model, args.prefix, direction, split, args.limit)
             if s:
                 stats.append(s)
 

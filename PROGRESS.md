@@ -287,11 +287,13 @@ Compression is below the nominal 2×/4× because only the transformer blocks are
 
 **Pruning code.** `prune_magnitude.py` implements the proposal's global unstructured magnitude pruning, run as its own phase (`run_prune.sh 30|50`). Design choices: only the linear weights inside the transformer blocks are pruned (embeddings, LM head and norms are kept); one global threshold, found by bisection rather than sorting ~7B values; per-module and per-layer achieved sparsity saved in `pruning_meta.json`, because a global threshold prunes layers unevenly; an optional per-matrix (`layer`) scope as a sensitivity check. Verified on a small Llama model: target sparsity reached, surviving weights unchanged, embeddings/LM head/norms untouched, checkpoint reloads and runs through the translation pipeline. Pruned checkpoints are dense fp16, so pruning's efficiency is reported as non-zero parameters rather than size or latency.
 
+**Scheduling changes (17 Oct 2026).** After 22 hours, the three translation jobs pinned to mscluster106 with `--exclusive` (69601–69603) had still not started, because an exclusive job waits for a completely empty node. Quality and timing were therefore separated. Full translations run on any working GPU; latency and memory come from a short exclusive benchmark (`run_timing.sh`, the first 100 devtest sentences per direction, every model on one node). The baseline re-score (69604, mscluster109, confirming that node's GPU works) hit its 2-hour limit and, because `evaluate.py` wrote only at the end, saved nothing. `evaluate.py` now saves each file as it is scored, resumes after a timeout, uses COMET batch size 32 (was 8), and the job limit is 8 hours. Recomputing BLEU and chrF++ for the baseline files in a clean environment reproduced the committed values exactly.
+
 ## 14. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
 2. ~~`sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`~~ (done, §13).
-3. `sbatch --exclusive -w mscluster106 run_translate.sh ...` for gptq8, gptq4 and fp16 (submitted 17 Oct, jobs 69601–69603), then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
+3. `sbatch run_translate.sh ...` for gptq8 and gptq4, `run_timing.sh` (exclusive, mscluster106) for fp16/gptq8/gptq4, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
 4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
 5. ~~Implement magnitude pruning~~ (done, §13). Run `sbatch run_prune.sh 30` and `50`, then translate (`mag30`, `mag50`) and evaluate (HPC_RUNBOOK.md §3b).
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).
