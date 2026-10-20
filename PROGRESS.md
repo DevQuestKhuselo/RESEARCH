@@ -291,6 +291,8 @@ Compression is below the nominal 2×/4× because only the transformer blocks are
 
 **GPTQ translation failure (17 Oct 2026).** The first gptq8/gptq4 translation jobs (69601, 69602) failed within two minutes, while the fp16 re-run (69603) completed all ten files in 4 h 50 min on mscluster106 with `--exclusive`. Transformers 5.19 requires the `optimum` package (≥1.24) to load GPTQ checkpoints, and it was not part of the `research` environment; GPT-QModel itself only needs it for loading through Transformers. Fix: `pip install "optimum>=1.24" --no-deps` (optimum 2.3.0 verified compatible with transformers 5.19 and leaves torch unchanged). The pruning jobs (69605, 69606) sat pending for three days because they were restricted to mscluster109, which was then drained.
 
+**Silent CPU fallback (20 Oct 2026).** After installing `optimum`, both GPTQ checkpoints loaded on mscluster111 and GPT-QModel selected its `TritonV2Linear` kernel, but generation failed with `Expected a cuda device, but got: cpu`. `nvidia-smi -L` listed the GPU (RTX PRO 6000 Blackwell), but accelerate's probe could not use it ("Device 0 seems unavailable"), so `device_map="auto"` silently placed the model on CPU. mscluster111's GPU is therefore still faulty. `load_model` now places the model explicitly on `cuda` and raises an error if any tensor is not on the GPU, so a broken GPU fails loudly. The fp16 results are unaffected: on a working GPU, `"auto"` and `"cuda"` both put the whole 8B model on GPU 0.
+
 ## 14. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.

@@ -44,7 +44,7 @@ def prompt_template(query, src_language, trg_language):
     return prompt
 
 
-def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map="auto"):
+def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map=None):
     """Load the base model (default) or a compressed checkpoint directory.
 
     GPTQ checkpoints saved by quantise_gptq.py carry a `quantization_config`
@@ -52,6 +52,13 @@ def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map="auto"):
     through the same from_pretrained call, so the generation code is
     identical for baseline and quantised runs.
     """
+    # Place the whole model on the GPU explicitly. With device_map="auto",
+    # accelerate silently falls back to CPU when a GPU fails its probe
+    # (seen on mscluster111, 20 Oct 2026), and GPTQ kernels then crash with
+    # "Expected a cuda device, but got: cpu". An explicit "cuda" map makes a
+    # broken GPU fail loudly at load time instead.
+    if device_map is None:
+        device_map = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading {model_path} ...")
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -61,6 +68,11 @@ def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map="auto"):
         model_path, torch_dtype=dtype, device_map=device_map
     )
     model.eval()
+    # GPTQ layers keep their quantised weights in buffers, so check both
+    devices = {t.device.type for t in [*model.parameters(), *model.buffers()]}
+    print(f"Model tensors on: {sorted(devices)}")
+    if device_map == "cuda" and devices != {"cuda"}:
+        raise RuntimeError(f"Expected the whole model on the GPU, got {sorted(devices)}")
     return tokenizer, model
 
 

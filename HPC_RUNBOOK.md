@@ -145,7 +145,7 @@ Optional sanity check that a checkpoint loads and translates, before the multi-h
 Open an interactive GPU session first (handbook §2.2), and cancel it when finished:
 ```bash
 srun --partition=biggpu --exclude=mscluster[107-108,110-112] --nodes=1 --ntasks=1 --time=00:30:00 --pty bash -i
-nvidia-smi                            # must show real values; ERR! or "No devices" = broken node
+source gpu_preflight.sh               # must print "GPU OK"; nvidia-smi alone can list a broken GPU
 source ~/miniconda3/etc/profile.d/conda.sh && conda activate research && cd ~/RESEARCH && source cluster_env.sh
 python -c "from baseline_translate import *; t,m=load_model('models/llamax3-8b-gptq-4bit'); \
 print(translate_one(t,m,'Good morning, how are you?','English','Zulu'))"
