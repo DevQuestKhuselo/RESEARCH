@@ -168,12 +168,12 @@ If a job hits its 12-hour limit, resubmit the same command: complete directions 
 **Timing** (first 100 devtest sentences per direction, ~15–30 min per model; the 1-hour limit lets SLURM fit
 it into gaps between other jobs). GPUs are not SLURM-tracked
 here, so `--exclusive` is what stops other jobs sharing the GPU and distorting latency; run every model
-on the same node:
+on the same node. One job benchmarks fp16, gptq8 and gptq4 back-to-back:
 ```bash
-sbatch --exclusive -w mscluster106 run_timing.sh LLaMAX/LLaMAX3-8B-Alpaca fp16
-sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-gptq-8bit gptq8
-sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-gptq-4bit gptq4
+sbatch --exclusive -w mscluster106 run_timing.sh
 ```
+**Job limit:** the cluster allows at most **6 queued + running jobs per user**
+(`QOSMaxSubmitJobPerUserLimit`). Check `squeue --me | tail -n +2 | wc -l` before submitting.
 Report latency and memory from `results/efficiency_timing_*.csv` only; the `efficiency_<prefix>.csv`
 files from the quality runs were measured on shared GPUs.
 Outputs `results/gptq{8,4}_{direction}_{split}.csv` and `results/efficiency_gptq{8,4}.csv`.
@@ -207,7 +207,7 @@ repeated text), run the per-matrix variant as a sensitivity check: `sbatch run_p
 
 Pruned checkpoints are stored dense, so size, memory and latency should be ~unchanged from fp16;
 report pruning's compression as non-zero parameter count, not file size. A timing benchmark
-(`run_timing.sh ... mag50`) is optional and should confirm latency is ~unchanged from fp16.
+(`sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-mag30:mag30 models/llamax3-8b-mag50:mag50`) is optional and should confirm latency is ~unchanged from fp16.
 
 ## 4. Score and compute degradation
 

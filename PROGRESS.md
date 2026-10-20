@@ -293,6 +293,8 @@ Compression is below the nominal 2×/4× because only the transformer blocks are
 
 **Silent CPU fallback (20 Oct 2026).** After installing `optimum`, both GPTQ checkpoints loaded on mscluster111 and GPT-QModel selected its `TritonV2Linear` kernel, but generation failed with `Expected a cuda device, but got: cpu`. `nvidia-smi -L` listed the GPU (RTX PRO 6000 Blackwell), but accelerate's probe could not use it ("Device 0 seems unavailable"), so `device_map="auto"` silently placed the model on CPU. mscluster111's GPU is therefore still faulty. `load_model` now places the model explicitly on `cuda` and raises an error if any tensor is not on the GPU, so a broken GPU fails loudly. The fp16 results are unaffected: on a working GPU, `"auto"` and `"cuda"` both put the whole 8B model on GPU 0.
 
+**Node and quota limits (20 Oct 2026).** A full CUDA check showed mscluster112's GPU still fails ("CUDA unknown error"); with 107, 108 and 110 down, 109 drained and 111 faulty, **mscluster106 is the only usable biggpu node**. The cluster also limits each user to 6 queued + running jobs, so the three timing benchmarks were merged into one job (`run_timing.sh` with no arguments runs fp16, gptq8 and gptq4).
+
 ## 14. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
