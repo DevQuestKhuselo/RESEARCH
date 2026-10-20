@@ -9,5 +9,7 @@ output/
 
 # Quantised / pruned checkpoints (multi-GB, regenerable)
 models/
+# cluster_env.sh makes models a symlink into /datasets, which models/ does not match
+models
 __pycache__/
 *.pyc

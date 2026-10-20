@@ -68,6 +68,7 @@ conda create -y -n research python=3.11 "setuptools<81"
 conda activate research
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install transformers accelerate sacrebleu requests
+pip install "optimum>=1.24" --no-deps     # transformers needs it to LOAD GPTQ checkpoints
 conda deactivate
 
 # gptqmodel: install INSIDE a GPU session so it builds against the torch above.
