@@ -295,6 +295,27 @@ Compression is below the nominal 2×/4× because only the transformer blocks are
 
 **Node and quota limits (20 Oct 2026).** A full CUDA check showed mscluster112's GPU still fails ("CUDA unknown error"); with 107, 108 and 110 down, 109 drained and 111 faulty, **mscluster106 is the only usable biggpu node**. The cluster also limits each user to 6 queued + running jobs, so the three timing benchmarks were merged into one job (`run_timing.sh` with no arguments runs fp16, gptq8 and gptq4).
 
+**Pruning results (jobs 69605/69606, mscluster106, 20 Oct 2026).** 224 linear matrices (6.979B of 8.030B parameters) were pruned with one global magnitude threshold; pruning itself took ~16 s.
+
+| | 30% target | 50% target |
+|---|---|---|
+| Global threshold on \|w\| | 0.00435 | 0.00770 |
+| Achieved, prunable weights | 30.03% | 50.03% |
+| Achieved, all parameters | 26.10% | 43.48% |
+| q_proj | 24.75% | 40.98% |
+| k_proj | 16.87% | 28.47% |
+| v_proj | 38.63% | 60.99% |
+| o_proj | 36.07% | 58.61% |
+| gate_proj | 26.10% | 44.29% |
+| up_proj | 31.74% | 52.96% |
+| down_proj | 32.36% | 53.74% |
+
+A global threshold prunes unevenly: value and output projections (v/o_proj), which have smaller weights, lose the most (~61% and ~59% at the 50% target), while key projections (k_proj) lose the least (~28%). Per-layer values are in `results/mag{30,50}_pruning_meta.json`.
+
+**GPTQ kernel failure on mscluster106 (jobs 71965/71966).** With `backend="auto"`, GPT-QModel selected its Marlin kernel, which must be JIT-compiled and failed ("CUDA_HOME environment variable is not set"). `load_model` now forces the `gptq_torch` kernel (no compilation, runs on any GPU; GPT-QModel rates it at ~80% of Triton's speed), overridable via `GPTQ_BACKEND`.
+
+**Scoring stalls (jobs 69604, 71967, 71968).** All three timed out without scoring a single file: each sat at `Fetching 5 files: 0%` while downloading the COMET model, which was not yet cached under the new account's `HF_HOME`. A CPU job (`run_prefetch_eval.sh`) now caches both COMET models and their encoders once. Scoring jobs run with `HF_HUB_OFFLINE=1`, and downloads use plain HTTP with timeouts (`HF_HUB_DISABLE_XET=1`), so a missing model or stalled download fails immediately instead of hanging.
+
 ## 14. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.

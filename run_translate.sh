@@ -3,6 +3,10 @@
 #   sbatch run_translate.sh                                         # baseline
 #   sbatch run_translate.sh models/llamax3-8b-gptq-8bit gptq8
 #   sbatch run_translate.sh models/llamax3-8b-gptq-4bit gptq4
+#   sbatch run_translate.sh models/llamax3-8b-mag50 mag50 devtest   # one split only
+# GPTQ checkpoints load with the GPT-QModel kernel in $GPTQ_BACKEND
+# (default gptq_torch, see baseline_translate.py), e.g.
+#   sbatch --export=ALL,GPTQ_BACKEND=gptq_triton run_translate.sh ...
 #SBATCH --partition=biggpu
 #SBATCH --time=12:00:00
 #SBATCH --job-name=translate
@@ -19,6 +23,7 @@
 set -eo pipefail
 MODEL_PATH=${1:-LLaMAX/LLaMAX3-8B-Alpaca}
 PREFIX=${2:-baseline}
+SPLITS=${3:-dev devtest}
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate research
@@ -28,6 +33,7 @@ source cluster_env.sh
 source gpu_preflight.sh
 mkdir -p results
 
-python run_all_baselines.py --model_path "$MODEL_PATH" --prefix "$PREFIX"
+# shellcheck disable=SC2086  # SPLITS is a deliberate word list
+python run_all_baselines.py --model_path "$MODEL_PATH" --prefix "$PREFIX" --splits $SPLITS
 
 echo "Translation job [$PREFIX] finished."

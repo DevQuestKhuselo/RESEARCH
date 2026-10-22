@@ -26,16 +26,23 @@ COMET_MODEL_ID = "Unbabel/wmt22-comet-da"
 AFRICOMET_MODEL_ID = "masakhane/africomet-stl-1.1"
 
 
+def load_one(model_id):
+    """With HF_HUB_OFFLINE=1 (set by run_evaluate.sh) everything must already
+    be cached by run_prefetch_eval.sh; a scoring job then never waits on the
+    network (an uncached download hung for 8 h on 20-22 Oct 2026)."""
+    offline = os.environ.get("HF_HUB_OFFLINE") == "1"
+    print(f"Loading {model_id} ({'offline, from cache' if offline else 'may download'}) ...", flush=True)
+    try:
+        path = download_model(model_id, local_files_only=offline)
+    except KeyError as e:
+        if offline:
+            raise RuntimeError(f"{model_id} is not cached. Run `sbatch run_prefetch_eval.sh` first.") from e
+        raise
+    return load_from_checkpoint(path, local_files_only=offline)
+
+
 def load_comet_models():
-    print(f"Loading COMET model ({COMET_MODEL_ID}) ...")
-    comet_path = download_model(COMET_MODEL_ID)
-    comet_model = load_from_checkpoint(comet_path)
-
-    print(f"Loading AfriCOMET model ({AFRICOMET_MODEL_ID}) ...")
-    africomet_path = download_model(AFRICOMET_MODEL_ID)
-    africomet_model = load_from_checkpoint(africomet_path)
-
-    return comet_model, africomet_model
+    return load_one(COMET_MODEL_ID), load_one(AFRICOMET_MODEL_ID)
 
 
 def read_triples(path):

@@ -15,3 +15,9 @@ if [ -n "${BIG_STORE:-}" ]; then
 else
   echo "WARNING: no writable /gluster/$USER or /datasets/$USER; using \$HOME for model files" >&2
 fi
+# Plain HTTP downloads with timeouts: a COMET download sat at
+# "Fetching 5 files: 0%" for 8 h (Oct 2026). Disabling the Xet transfer
+# backend and setting timeouts makes a stalled download fail instead.
+export HF_HUB_DISABLE_XET=1
+export HF_HUB_DOWNLOAD_TIMEOUT=60
+export HF_HUB_ETAG_TIMEOUT=60

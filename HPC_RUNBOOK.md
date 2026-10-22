@@ -154,6 +154,15 @@ exit                                  # then check `squeue --me` and `scancel <j
 
 ## 3. Translate with the quantised models
 
+**GPTQ kernel:** GPTQ checkpoints are loaded with GPT-QModel's `gptq_torch` kernel (no compilation).
+The default `auto` choice picked Marlin on mscluster106, which needs JIT compilation and failed
+("CUDA_HOME environment variable is not set"). To try the faster Triton kernel:
+`sbatch --export=ALL,GPTQ_BACKEND=gptq_triton run_translate.sh ...`. Record the kernel in the write-up.
+
+**GPU memory on a shared node:** GPUs are not SLURM-tracked, so several of your jobs can start on
+106 at once and together exceed its 48 GB (fp16 or pruned ≈ 16 GB, gptq8 ≈ 9 GB, gptq4 ≈ 6 GB,
+scoring ≈ 5 GB, each plus working memory). Chain the large ones with `--dependency=afterany:<jobid>`.
+
 Quality and timing are measured in **separate** jobs. Full quality runs go on any working GPU node.
 A request for an exclusive, pinned node sat pending for over 22 hours (17 Oct 2026), so exclusivity is
 kept for short timing benchmarks only.
@@ -210,6 +219,16 @@ report pruning's compression as non-zero parameter count, not file size. A timin
 (`sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-mag30:mag30 models/llamax3-8b-mag50:mag50`) is optional and should confirm latency is ~unchanged from fp16.
 
 ## 4. Score and compute degradation
+
+**Once per account, cache the scoring models** (CPU job, no GPU needed). Scoring jobs then run
+offline and fail at once if anything is missing, instead of hanging on a download:
+```bash
+sbatch run_prefetch_eval.sh       # log must end with "Offline load OK: scoring jobs can run."
+```
+If the log shows a 401/403 error for `masakhane/africomet-stl-1.1`, the model is gated: accept its
+terms on the HuggingFace model page, run `hf auth login` (in `comet_eval`) and resubmit.
+
+Several prefixes can be scored in one job (saves job slots): `sbatch run_evaluate.sh baseline fp16`.
 
 Scoring saves each file to `scores_<prefix>_summary.csv.partial` as it finishes; if a job hits its
 8-hour limit, resubmit the same command and only unscored files are redone. The summary CSV is written

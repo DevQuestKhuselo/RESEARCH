@@ -24,11 +24,34 @@ model's "Supported Languages" naming (e.g. 'Swahili', 'Zulu', 'English',
 
 import argparse
 import csv
+import json
 import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 MODEL_ID = "LLaMAX/LLaMAX3-8B-Alpaca"
+
+# GPT-QModel kernel used when loading GPTQ checkpoints. "auto" picked Marlin on
+# mscluster106 (Quadro RTX 8000), which must be JIT-compiled and failed there
+# (no CUDA_HOME). gptq_torch needs no compilation and runs on any GPU;
+# override with e.g. GPTQ_BACKEND=gptq_triton.
+GPTQ_BACKEND_DEFAULT = "gptq_torch"
+
+
+def gptq_loading_override(model_path):
+    """GPTQConfig that only overrides the kernel (backend) of a saved GPTQ
+    checkpoint; bits, group size etc. still come from its config.json."""
+    cfg_path = os.path.join(model_path, "config.json")
+    if not os.path.isfile(cfg_path):
+        return None
+    with open(cfg_path) as f:
+        qc = json.load(f).get("quantization_config") or {}
+    if str(qc.get("quant_method", "")).lower() != "gptq":
+        return None
+    from transformers import GPTQConfig
+    backend = os.environ.get("GPTQ_BACKEND", GPTQ_BACKEND_DEFAULT)
+    print(f"GPTQ checkpoint ({qc.get('bits')}-bit): using GPT-QModel backend '{backend}'")
+    return GPTQConfig(bits=qc["bits"], backend=backend)
 
 
 def prompt_template(query, src_language, trg_language):
@@ -64,8 +87,12 @@ def load_model(model_path=MODEL_ID, dtype=torch.float16, device_map=None):
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     except (OSError, ValueError):
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    extra = {}
+    override = gptq_loading_override(model_path)
+    if override is not None:
+        extra["quantization_config"] = override
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=dtype, device_map=device_map
+        model_path, torch_dtype=dtype, device_map=device_map, **extra
     )
     model.eval()
     # GPTQ layers keep their quantised weights in buffers, so check both
