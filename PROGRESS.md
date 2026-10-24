@@ -316,11 +316,44 @@ A global threshold prunes unevenly: value and output projections (v/o_proj), whi
 
 **Scoring stalls (jobs 69604, 71967, 71968).** All three timed out without scoring a single file: each sat at `Fetching 5 files: 0%` while downloading the COMET model, which was not yet cached under the new account's `HF_HOME`. A CPU job (`run_prefetch_eval.sh`) now caches both COMET models and their encoders once. Scoring jobs run with `HF_HUB_OFFLINE=1`, and downloads use plain HTTP with timeouts (`HF_HUB_DISABLE_XET=1`), so a missing model or stalled download fails immediately instead of hanging.
 
-## 14. Immediate Next Steps
+## 14. Preliminary results: BLEU and chrF++ on devtest (24 Oct 2026)
+
+**Reproducibility.** The fp16 re-run on the author's own account (mscluster106, Quadro RTX 8000) reproduced the original baseline exactly in BLEU and chrF++ for 9 of 10 files. The exception, en→sw devtest, differs by 0.04 BLEU (24.10 vs 24.14), i.e. a handful of sentences decoded differently on different GPUs. Re-scoring the original baseline outputs in the new `comet_eval` environment changed COMET and AfriCOMET only in the 4th decimal place. The fp16 re-run (`fp16_*`) is the reference for all comparisons below, so that baseline and compressed outputs come from the same hardware and software.
+
+**Relative change vs fp16, devtest, paired bootstrap (n = 1000, seed 12345; `significance.py`, full table in `significance_devtest.csv`).** Cells are % change [95% CI]. "Disparity" is the low-resource direction's relative change minus en→fr's, in percentage points; an interval below zero means that direction degrades significantly more than the high-resource control.
+
+| Config | Direction | BLEU Δ% | chrF++ Δ% | chrF++ disparity vs en→fr (pp) |
+|---|---|---|---|---|
+| GPTQ 8-bit | en→fr | −0.2 [−0.6, 0.2] | −0.1 [−0.3, 0.0] | (control) |
+| | en→sw | +0.3 [−0.7, 1.3] | +0.2 [−0.2, 0.6] | +0.3 [−0.1, 0.7] |
+| | en→zu | −1.0 [−5.1, 3.6] | +0.3 [−0.8, 1.5] | +0.5 [−0.7, 1.6] |
+| | sw→en | −0.2 [−0.6, 0.1] | 0.0 [−0.1, 0.2] | +0.2 [−0.1, 0.4] |
+| | zu→en | +0.6 [−0.3, 1.3] | +0.1 [−0.2, 0.4] | +0.2 [−0.1, 0.6] |
+| GPTQ 4-bit | en→fr | −1.8 [−3.2, −0.4] | −1.2 [−1.8, −0.5] | (control) |
+| | en→sw | −8.6 [−12.3, −5.5] | −3.3 [−4.1, −2.3] | −2.1 [−3.2, −1.0] |
+| | en→zu | −18.8 [−26.2, −11.2] | −6.1 [−8.0, −4.3] | −5.0 [−7.0, −3.0] |
+| | sw→en | −5.5 [−7.4, −3.8] | −2.8 [−3.5, −2.0] | −1.6 [−2.6, −0.6] |
+| | zu→en | −11.7 [−14.7, −8.9] | −5.8 [−6.9, −4.7] | −4.6 [−6.0, −3.4] |
+| Magnitude 30% | en→fr | −16.8 [−20.3, −15.0] | −6.7 [−8.0, −5.6] | (control) |
+| | en→sw | −68.6 [−71.3, −65.9] | −26.4 [−28.2, −24.4] | −19.7 [−21.8, −17.3] |
+| | en→zu | −73.8 [−77.7, −69.6] | −27.3 [−29.1, −25.6] | −20.6 [−22.7, −18.4] |
+| | sw→en | −43.7 [−47.7, −39.7] | −20.0 [−21.7, −18.6] | −13.3 [−15.3, −11.5] |
+| | zu→en | −66.6 [−69.4, −63.6] | −32.9 [−34.4, −31.5] | −26.2 [−28.1, −24.3] |
+| Magnitude 50% | all (zu→en pending) | −99.7 to −100 | −85 to −92 | floor effect |
+
+**Findings so far.**
+1. **8-bit GPTQ is effectively lossless** in every direction: no change is significant and no direction degrades more than en→fr.
+2. **4-bit GPTQ degrades every direction, and all four low-resource directions significantly more than en→fr** on both BLEU and chrF++. Generation into isiZulu suffers most (−18.8% BLEU, −6.1% chrF++), then zu→en, en→sw and sw→en.
+3. **30% global magnitude pruning shows the same disparity, far amplified**: −17% BLEU for en→fr versus −69% (en→sw) and −74% (en→zu). Generation into the African languages degenerates: 22–23% of en→sw / en→zu outputs contain a trigram repeated ≥3 times (0.4% / 4.2% for fp16), and outputs grow to 1.8–2.2× the reference length (1.02–1.11× for fp16). This also explains the longer run time of mag30 at identical tokens/s.
+4. **50% global magnitude pruning collapses the model** in all directions (>99% of outputs repetitive, 5–10× reference length), which also caused job 73098 to hit its 12-hour limit. Its near-zero "disparities" are a floor effect, not evidence of robustness.
+
+**Caveats for the write-up.** Relative change on a low base is noisy: en→zu's −18.8% BLEU is −1.1 BLEU points, which is why chrF++ (higher base, character-level, better suited to agglutinative isiZulu) is the more reliable headline metric there. The disparity interval resamples each direction independently, which is conservative: the en→X directions share the same English devtest sentences. Each configuration is a single deterministic run (greedy decoding, one GPTQ calibration seed), so variation across calibration sets is not measured. COMET and AfriCOMET for the compressed models are pending (job 73596).
+
+## 15. Immediate Next Steps
 
 1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
 2. ~~`sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`~~ (done, §13).
 3. `sbatch run_translate.sh ...` for gptq8 and gptq4, `run_timing.sh` (exclusive, mscluster106) for fp16/gptq8/gptq4, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
 4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
-5. ~~Implement magnitude pruning~~ (done, §13). Run `sbatch run_prune.sh 30` and `50`, then translate (`mag30`, `mag50`) and evaluate (HPC_RUNBOOK.md §3b).
+5. ~~Implement magnitude pruning~~ (done, §13). ~~Prune and translate mag30/mag50~~ (done, §14; mag50 zu→en resubmitted as 73593). Score with COMET/AfriCOMET (73596) and rerun `significance.py` once mag50 is complete.
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).

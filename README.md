@@ -60,6 +60,7 @@ Low-resource translation directions will experience significantly larger degrada
 ├── quantise_gptq.py           # GPTQ quantisation at 8-bit / 4-bit (gptqmodel, multilingual calibration)
 ├── run_all_baselines.py       # Translate all directions with any model (--model_path, --prefix)
 ├── compute_degradation.py     # Relative degradation (Δ) vs baseline, by resource category
+├── significance.py            # Paired bootstrap CIs and low- vs high-resource disparity test
 ├── run_quantise.sh / run_prune.sh / run_translate.sh / run_timing.sh / run_evaluate.sh / run_prefetch_eval.sh   # SLURM jobs (see HPC_RUNBOOK.md)
 ├── prune_magnitude.py         # Global unstructured magnitude pruning (30% / 50%), run_prune.sh
 ├── evaluate.py                # Scores translations with BLEU / chrF++ / COMET / AfriCOMET

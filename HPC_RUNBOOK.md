@@ -249,6 +249,12 @@ python compute_degradation.py --compressed scores_mag30_summary.csv scores_mag50
   --output degradation_pruning.csv
 ```
 The printed table gives mean relative Δ (%) per config × resource category on `devtest`.
+For confidence intervals and the direct test of the hypothesis (does each low-resource direction
+degrade significantly more than en→fr?), run the paired bootstrap. It is CPU-only and takes a few
+minutes, so run it on your laptop after `git pull`:
+```bash
+python significance.py --configs gptq8 gptq4 mag30 mag50 --output significance_devtest.csv
+```
 Use `devtest` as the headline split: GPTQ calibration sentences come from `dev`.
 
 ## 5. Commit results
