@@ -1,0 +1,6 @@
+prefix,direction,split,sentences,seconds,sec_per_sentence,output_tokens_per_sec,gpu,model_mem_gb,peak_mem_gb
+timing_fp16,en-fr,devtest,100,152.3,1.5229,28.54,Quadro RTX 8000,14.96,15.03
+timing_fp16,en-sw,devtest,100,188.4,1.8843,28.66,Quadro RTX 8000,14.96,15.03
+timing_fp16,en-zu,devtest,100,231.1,2.3111,28.86,Quadro RTX 8000,14.96,15.03
+timing_fp16,sw-en,devtest,100,100.4,1.004,28.01,Quadro RTX 8000,14.96,15.03
+timing_fp16,zu-en,devtest,100,101.8,1.0181,27.95,Quadro RTX 8000,14.96,15.03

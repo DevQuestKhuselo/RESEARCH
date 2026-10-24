@@ -1,0 +1,2 @@
+prefix,direction,split,sentences,seconds,sec_per_sentence,output_tokens_per_sec,gpu,model_mem_gb,peak_mem_gb
+mag50,zu-en,devtest,1012,8936.3,8.8304,25.29,Quadro RTX 8000,14.96,15.05

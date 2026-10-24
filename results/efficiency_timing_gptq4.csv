@@ -1,0 +1,6 @@
+prefix,direction,split,sentences,seconds,sec_per_sentence,output_tokens_per_sec,gpu,model_mem_gb,peak_mem_gb
+timing_gptq4,en-fr,devtest,100,353.4,3.5345,12.27,Quadro RTX 8000,5.34,5.5
+timing_gptq4,en-sw,devtest,100,446.2,4.4619,12.57,Quadro RTX 8000,5.34,5.5
+timing_gptq4,en-zu,devtest,100,545.2,5.4525,12.61,Quadro RTX 8000,5.34,5.5
+timing_gptq4,sw-en,devtest,100,229.2,2.2916,12.31,Quadro RTX 8000,5.34,5.5
+timing_gptq4,zu-en,devtest,100,232.9,2.3294,12.31,Quadro RTX 8000,5.34,5.5
