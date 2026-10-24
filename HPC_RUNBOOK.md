@@ -218,6 +218,20 @@ Pruned checkpoints are stored dense, so size, memory and latency should be ~unch
 report pruning's compression as non-zero parameter count, not file size. A timing benchmark
 (`sbatch --exclusive -w mscluster106 run_timing.sh models/llamax3-8b-mag30:mag30 models/llamax3-8b-mag50:mag50`) is optional and should confirm latency is ~unchanged from fp16.
 
+## 3c. Robustness and ablation runs
+
+Six job slots, so build the variants in one quantisation job and chain each translation behind it:
+```bash
+P=$(sbatch --parsable -w mscluster106 run_prune.sh 50 layer)
+sbatch --dependency=afterok:$P -w mscluster106 run_translate.sh models/llamax3-8b-mag50-layer mag50layer devtest
+Q=$(sbatch --parsable -w mscluster106 run_quantise.sh 4 s43 s44 en)
+sbatch --dependency=afterok:$Q -w mscluster106 run_translate.sh models/llamax3-8b-gptq-4bit-s43 gptq4s43 devtest
+sbatch --dependency=afterok:$Q -w mscluster106 run_translate.sh models/llamax3-8b-gptq-4bit-s44 gptq4s44 devtest
+sbatch --dependency=afterok:$Q -w mscluster106 run_translate.sh models/llamax3-8b-gptq-4bit-en gptq4en devtest
+```
+Then `sbatch -w mscluster106 run_evaluate.sh mag50layer gptq4s43 gptq4s44 gptq4en` and
+`python significance.py --configs gptq8 gptq4 gptq4s43 gptq4s44 gptq4en mag30 mag50 mag50layer`.
+
 ## 4. Score and compute degradation
 
 **Once per account, cache the scoring models** (CPU job, no GPU needed). Scoring jobs then run

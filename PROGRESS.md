@@ -390,5 +390,6 @@ The full fp16 re-run (69603, before the explicit-GPU fix) reports 7.48 GB on GPU
 All planned experiments are complete: baseline and fp16 re-run, GPTQ 8/4-bit, magnitude pruning 30/50%, all scored on four metrics with bootstrap significance, plus the efficiency benchmark.
 
 Remaining:
+0. **Robustness and ablation runs (submitted 24 Oct, HPC_RUNBOOK.md §3c):** 4-bit GPTQ with calibration seeds 43 and 44; 4-bit GPTQ with English-only calibration (same 128-sentence total); 50% pruning with a per-matrix threshold. Each translated on devtest, then scored and added to `significance.py`.
 1. **Write-up** (results and discussion from §14, methods from §2–§13).
-2. **Not done, for the limitations / future-work section:** the Masakhane LAFAND-MT in-domain evaluation (downloaded, not run); dev-split translations of the compressed models (dev was used for GPTQ calibration, so devtest is the headline split); the per-matrix 50% pruning sensitivity check (`sbatch run_prune.sh 50 layer`), which would show whether the 50% collapse is specific to a single global threshold; multiple GPTQ calibration seeds; latency on an Ampere-or-newer GPU, where GPT-QModel's fast kernels apply.
+2. **Not done, for the limitations / future-work section:** the Masakhane LAFAND-MT in-domain evaluation (downloaded, not run); dev-split translations of the compressed models (dev was used for GPTQ calibration, so devtest is the headline split); latency on an Ampere-or-newer GPU, where GPT-QModel's fast kernels apply.

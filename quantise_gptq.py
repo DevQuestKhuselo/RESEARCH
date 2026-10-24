@@ -23,6 +23,9 @@ Requirements (in the `research` conda env, on a GPU node):
 Usage:
     python quantise_gptq.py --bits 4 --out_dir models/llamax3-8b-gptq-4bit
     python quantise_gptq.py --bits 8 --out_dir models/llamax3-8b-gptq-8bit
+Variants (robustness / ablation):
+    --seed 43                      a different random calibration sample
+    --calib_langs eng_Latn         English-only calibration (same 128-sentence total)
 """
 
 import argparse
@@ -41,11 +44,11 @@ def load_flores_split(flores_root, split, code):
         return [line.rstrip("\n") for line in f]
 
 
-def build_calibration(flores_root, n_per_lang, seed):
+def build_calibration(flores_root, n_per_lang, seed, langs=FLORES_CODES):
     """Return (texts, ids_by_lang). Disjoint sentence IDs per language."""
-    per_lang = {c: load_flores_split(flores_root, "dev", c) for c in FLORES_CODES}
-    n_sentences = len(per_lang[FLORES_CODES[0]])
-    needed = n_per_lang * len(FLORES_CODES)
+    per_lang = {c: load_flores_split(flores_root, "dev", c) for c in langs}
+    n_sentences = len(per_lang[langs[0]])
+    needed = n_per_lang * len(langs)
     if needed > n_sentences:
         raise ValueError(f"Need {needed} distinct sentences, dev has {n_sentences}")
 
@@ -53,7 +56,7 @@ def build_calibration(flores_root, n_per_lang, seed):
     ids = rng.sample(range(n_sentences), needed)
 
     texts, ids_by_lang = [], {}
-    for i, code in enumerate(FLORES_CODES):
+    for i, code in enumerate(langs):
         chunk = sorted(ids[i * n_per_lang:(i + 1) * n_per_lang])
         ids_by_lang[code] = chunk
         texts.extend(per_lang[code][j] for j in chunk)
@@ -76,8 +79,10 @@ def main():
     p.add_argument("--out_dir", required=True)
     p.add_argument("--flores_root", default="flores200_dataset")
     p.add_argument("--group_size", type=int, default=128)
-    p.add_argument("--n_per_lang", type=int, default=32,
-                   help="Calibration sentences per language (total = 4x this)")
+    p.add_argument("--n_total", type=int, default=128,
+                   help="Calibration sentences in total, split evenly over --calib_langs")
+    p.add_argument("--calib_langs", nargs="+", default=FLORES_CODES, choices=FLORES_CODES,
+                   help="FLORES codes to calibrate on (default: all four, balanced)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--batch_size", type=int, default=1)
     args = p.parse_args()
@@ -86,9 +91,10 @@ def main():
     import torch
     from gptqmodel import GPTQModel, QuantizeConfig
 
-    texts, ids_by_lang = build_calibration(args.flores_root, args.n_per_lang, args.seed)
+    n_per_lang = args.n_total // len(args.calib_langs)
+    texts, ids_by_lang = build_calibration(args.flores_root, n_per_lang, args.seed, args.calib_langs)
     print(f"Calibration: {len(texts)} sentences "
-          f"({args.n_per_lang} x {len(FLORES_CODES)} languages, seed={args.seed})")
+          f"({n_per_lang} x {', '.join(args.calib_langs)}, seed={args.seed})")
 
     quant_config = QuantizeConfig(bits=args.bits, group_size=args.group_size)
     print(f"Loading {MODEL_ID} for {args.bits}-bit GPTQ (group_size={args.group_size}) ...")
@@ -109,7 +115,8 @@ def main():
         "bits": args.bits,
         "group_size": args.group_size,
         "calibration_split": "dev",
-        "calibration_n_per_lang": args.n_per_lang,
+        "calibration_n_per_lang": n_per_lang,
+        "calibration_langs": args.calib_langs,
         "seed": args.seed,
         "calibration_ids": ids_by_lang,
         "quantisation_seconds": round(quant_seconds, 1),
