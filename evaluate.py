@@ -74,6 +74,14 @@ def score_file(path, comet_model, africomet_model, batch_size=32):
     comet_result = comet_model.predict(comet_data, batch_size=batch_size, gpus=1, progress_bar=False)
     africomet_result = africomet_model.predict(comet_data, batch_size=batch_size, gpus=1, progress_bar=False)
 
+    # Segment-level scores (system score = their mean), for significance.py
+    seg_dir = os.path.join(os.path.dirname(path), "segscores")
+    os.makedirs(seg_dir, exist_ok=True)
+    with open(os.path.join(seg_dir, os.path.basename(path)), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["comet", "africomet"])
+        w.writerows(zip(comet_result.scores, africomet_result.scores))
+
     return {
         "bleu": bleu.score,
         "chrf++": chrf.score,

@@ -316,38 +316,64 @@ A global threshold prunes unevenly: value and output projections (v/o_proj), whi
 
 **Scoring stalls (jobs 69604, 71967, 71968).** All three timed out without scoring a single file: each sat at `Fetching 5 files: 0%` while downloading the COMET model, which was not yet cached under the new account's `HF_HOME`. A CPU job (`run_prefetch_eval.sh`) now caches both COMET models and their encoders once. Scoring jobs run with `HF_HUB_OFFLINE=1`, and downloads use plain HTTP with timeouts (`HF_HUB_DISABLE_XET=1`), so a missing model or stalled download fails immediately instead of hanging.
 
-## 14. Preliminary results: BLEU and chrF++ on devtest (24 Oct 2026)
+## 14. Results on devtest: quality and efficiency (24 Oct 2026)
 
 **Reproducibility.** The fp16 re-run on the author's own account (mscluster106, Quadro RTX 8000) reproduced the original baseline exactly in BLEU and chrF++ for 9 of 10 files. The exception, en→sw devtest, differs by 0.04 BLEU (24.10 vs 24.14), i.e. a handful of sentences decoded differently on different GPUs. Re-scoring the original baseline outputs in the new `comet_eval` environment changed COMET and AfriCOMET only in the 4th decimal place. The fp16 re-run (`fp16_*`) is the reference for all comparisons below, so that baseline and compressed outputs come from the same hardware and software.
 
-**Relative change vs fp16, devtest, paired bootstrap (n = 1000, seed 12345; `significance.py`, full table in `significance_devtest.csv`).** Cells are % change [95% CI]. "Disparity" is the low-resource direction's relative change minus en→fr's, in percentage points; an interval below zero means that direction degrades significantly more than the high-resource control.
+**Relative change vs fp16, devtest, paired bootstrap (n = 1000, seed 12345; `significance.py`, full table in `significance_devtest.csv`).** Cells are % change [95% CI]. "Disparity" is the low-resource direction's relative change minus en→fr's, in percentage points; an interval below zero means that direction degrades significantly more than the high-resource control. Each (metric, config, direction) has its own fixed random stream, so adding models or directions never changes existing results.
 
 | Config | Direction | BLEU Δ% | chrF++ Δ% | chrF++ disparity vs en→fr (pp) |
 |---|---|---|---|---|
-| GPTQ 8-bit | en→fr | −0.2 [−0.6, 0.2] | −0.1 [−0.3, 0.0] | (control) |
-| | en→sw | +0.3 [−0.7, 1.3] | +0.2 [−0.2, 0.6] | +0.3 [−0.1, 0.7] |
-| | en→zu | −1.0 [−5.1, 3.6] | +0.3 [−0.8, 1.5] | +0.5 [−0.7, 1.6] |
-| | sw→en | −0.2 [−0.6, 0.1] | 0.0 [−0.1, 0.2] | +0.2 [−0.1, 0.4] |
-| | zu→en | +0.6 [−0.3, 1.3] | +0.1 [−0.2, 0.4] | +0.2 [−0.1, 0.6] |
-| GPTQ 4-bit | en→fr | −1.8 [−3.2, −0.4] | −1.2 [−1.8, −0.5] | (control) |
-| | en→sw | −8.6 [−12.3, −5.5] | −3.3 [−4.1, −2.3] | −2.1 [−3.2, −1.0] |
-| | en→zu | −18.8 [−26.2, −11.2] | −6.1 [−8.0, −4.3] | −5.0 [−7.0, −3.0] |
-| | sw→en | −5.5 [−7.4, −3.8] | −2.8 [−3.5, −2.0] | −1.6 [−2.6, −0.6] |
-| | zu→en | −11.7 [−14.7, −8.9] | −5.8 [−6.9, −4.7] | −4.6 [−6.0, −3.4] |
-| Magnitude 30% | en→fr | −16.8 [−20.3, −15.0] | −6.7 [−8.0, −5.6] | (control) |
-| | en→sw | −68.6 [−71.3, −65.9] | −26.4 [−28.2, −24.4] | −19.7 [−21.8, −17.3] |
-| | en→zu | −73.8 [−77.7, −69.6] | −27.3 [−29.1, −25.6] | −20.6 [−22.7, −18.4] |
-| | sw→en | −43.7 [−47.7, −39.7] | −20.0 [−21.7, −18.6] | −13.3 [−15.3, −11.5] |
-| | zu→en | −66.6 [−69.4, −63.6] | −32.9 [−34.4, −31.5] | −26.2 [−28.1, −24.3] |
-| Magnitude 50% | all (zu→en pending) | −99.7 to −100 | −85 to −92 | floor effect |
+| GPTQ 8-bit | en→fr | -0.2 [-0.6, 0.2] | -0.1 [-0.3, 0.0] | (control) |
+|  | en→sw | +0.3 [-0.6, 1.3] | +0.2 [-0.2, 0.5] | +0.3 [-0.1, 0.7] |
+|  | en→zu | -1.0 [-5.4, 3.6] | +0.3 [-0.8, 1.3] | +0.5 [-0.7, 1.5] |
+|  | sw→en | -0.2 [-0.6, 0.2] | +0.0 [-0.1, 0.2] | +0.2 [-0.1, 0.4] |
+|  | zu→en | +0.6 [-0.2, 1.4] | +0.1 [-0.2, 0.4] | +0.2 [-0.1, 0.6] |
+| GPTQ 4-bit | en→fr | -1.8 [-3.2, -0.4] | -1.2 [-1.8, -0.6] | (control) |
+|  | en→sw | -8.6 [-12.7, -5.5] | -3.3 [-4.2, -2.3] | -2.1 [-3.3, -1.0] |
+|  | en→zu | -18.8 [-25.9, -10.9] | -6.1 [-7.9, -4.1] | -5.0 [-6.9, -2.9] |
+|  | sw→en | -5.5 [-7.3, -3.9] | -2.8 [-3.5, -2.0] | -1.6 [-2.5, -0.6] |
+|  | zu→en | -11.7 [-14.2, -9.0] | -5.8 [-6.8, -4.8] | -4.6 [-5.8, -3.4] |
+| Magnitude 30% | en→fr | -16.8 [-20.3, -14.8] | -6.7 [-8.0, -5.7] | (control) |
+|  | en→sw | -68.6 [-71.0, -65.8] | -26.4 [-28.2, -24.5] | -19.6 [-21.7, -17.4] |
+|  | en→zu | -73.8 [-77.7, -69.6] | -27.3 [-29.1, -25.4] | -20.6 [-22.7, -18.1] |
+|  | sw→en | -43.7 [-47.4, -39.9] | -20.0 [-21.5, -18.4] | -13.3 [-15.1, -11.3] |
+|  | zu→en | -66.6 [-69.5, -63.8] | -32.9 [-34.5, -31.4] | -26.2 [-28.0, -24.3] |
+| Magnitude 50% | all five | -100.0 to -99.7 | -91.6 to -85.4 | floor effect |
+
+**COMET and AfriCOMET** (relative change vs fp16, %, devtest; jobs 73094 and 73596) agree with BLEU and chrF++ in every configuration. Bootstrap intervals for them follow once segment-level scores are saved (see Next Steps).
+
+| Config | Metric | en→fr | en→sw | en→zu | sw→en | zu→en |
+|---|---|---|---|---|---|---|
+| GPTQ 8-bit | COMET | -0.09 | -0.01 | +0.05 | +0.03 | -0.01 |
+|  | AfriCOMET | -0.06 | -0.01 | +0.32 | +0.08 | -0.04 |
+| GPTQ 4-bit | COMET | -0.36 | -1.32 | -1.55 | -0.84 | -1.93 |
+|  | AfriCOMET | -0.94 | -2.58 | -4.86 | -1.11 | -2.99 |
+| Magnitude 30% | COMET | -2.89 | -15.68 | -14.29 | -6.06 | -14.87 |
+|  | AfriCOMET | -4.16 | -21.51 | -30.35 | -8.49 | -19.79 |
 
 **Findings so far.**
 1. **8-bit GPTQ is effectively lossless** in every direction: no change is significant and no direction degrades more than en→fr.
 2. **4-bit GPTQ degrades every direction, and all four low-resource directions significantly more than en→fr** on both BLEU and chrF++. Generation into isiZulu suffers most (−18.8% BLEU, −6.1% chrF++), then zu→en, en→sw and sw→en.
 3. **30% global magnitude pruning shows the same disparity, far amplified**: −17% BLEU for en→fr versus −69% (en→sw) and −74% (en→zu). Generation into the African languages degenerates: 22–23% of en→sw / en→zu outputs contain a trigram repeated ≥3 times (0.4% / 4.2% for fp16), and outputs grow to 1.8–2.2× the reference length (1.02–1.11× for fp16). This also explains the longer run time of mag30 at identical tokens/s.
-4. **50% global magnitude pruning collapses the model** in all directions (>99% of outputs repetitive, 5–10× reference length), which also caused job 73098 to hit its 12-hour limit. Its near-zero "disparities" are a floor effect, not evidence of robustness.
+4. **50% global magnitude pruning collapses the model** in all directions (>99% of outputs repetitive, 5–10× reference length; 223 output tokens per sentence vs 42 for fp16), which also caused job 73098 to hit its 12-hour limit; zu→en completed on resubmission (73593). Its near-zero "disparities" are a floor effect, not evidence of robustness.
 
-**Caveats for the write-up.** Relative change on a low base is noisy: en→zu's −18.8% BLEU is −1.1 BLEU points, which is why chrF++ (higher base, character-level, better suited to agglutinative isiZulu) is the more reliable headline metric there. The disparity interval resamples each direction independently, which is conservative: the en→X directions share the same English devtest sentences. Each configuration is a single deterministic run (greedy decoding, one GPTQ calibration seed), so variation across calibration sets is not measured. COMET and AfriCOMET for the compressed models are pending (job 73596).
+**Caveats for the write-up.** Relative change on a low base is noisy: en→zu's −18.8% BLEU is −1.1 BLEU points, which is why chrF++ (higher base, character-level, better suited to agglutinative isiZulu) is the more reliable headline metric there. The disparity interval resamples each direction independently, which is conservative: the en→X directions share the same English devtest sentences. Each configuration is a single deterministic run (greedy decoding, one GPTQ calibration seed), so variation across calibration sets is not measured.
+
+**Efficiency** (`run_timing.sh`, job 73597: first 100 devtest sentences per direction, all models back-to-back with `--exclusive` on mscluster106, one Quadro RTX 8000; GPT-QModel kernel `gptq_torch`).
+
+| Model | Checkpoint | GPU memory (model / peak) | Output tokens/s | vs fp16 |
+|---|---|---|---|---|
+| fp16 | ~15.0 GiB | 14.96 / 15.03 GB | 28.5 | 1.00× |
+| GPTQ 8-bit | 8.63 GiB | 8.61 / 8.77 GB (−42%) | 11.6 | 0.41× |
+| GPTQ 4-bit | 5.36 GiB | 5.34 / 5.50 GB (−64%) | 12.5 | 0.44× |
+| Magnitude 30% / 50% | ~15.0 GiB (dense) | 14.96 / 15.04 GB (0%) | 24.3 / 25.3* | ~same* |
+
+\* From the non-exclusive full runs (fp16 non-exclusive: 23.9 tok/s), so pruning has no speed effect, as expected for dense storage.
+
+GPTQ cuts GPU memory by 42% (8-bit) and 64% (4-bit) but is **~2.4× slower** here. On this pre-Ampere GPU GPT-QModel's fast kernels are unavailable, and the `gptq_torch` kernel dequantises weights on every forward pass. This is a property of this hardware/kernel combination, not of GPTQ in general, and should be reported as such. Output tokens per sentence are near-identical for fp16 and GPTQ (44–45), so the slowdown is per-token cost, not longer outputs. Pruned models instead produce longer outputs (60 tokens/sentence at 30%, 223 at 50%), so they take longer per sentence despite the same per-token speed.
+
+The full fp16 re-run (69603, before the explicit-GPU fix) reports 7.48 GB on GPU 0: with `device_map="auto"` the model was most likely split across two GPUs on mscluster106. Quality is unaffected (its BLEU matches the original baseline), but its timing is not comparable, which is why timing comes only from the separate benchmark. The non-exclusive full runs were also ~16% slower than the exclusive benchmark (23.9 vs 28.5 tokens/s for fp16), confirming that shared GPUs distort latency.
 
 ## 15. Immediate Next Steps
 
@@ -355,5 +381,5 @@ A global threshold prunes unevenly: value and output projections (v/o_proj), whi
 2. ~~`sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`~~ (done, §13).
 3. `sbatch run_translate.sh ...` for gptq8 and gptq4, `run_timing.sh` (exclusive, mscluster106) for fp16/gptq8/gptq4, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
 4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
-5. ~~Implement magnitude pruning~~ (done, §13). ~~Prune and translate mag30/mag50~~ (done, §14; mag50 zu→en resubmitted as 73593). Score with COMET/AfriCOMET (73596) and rerun `significance.py` once mag50 is complete.
+5. ~~Pruning: prune, translate, score~~ (done, §14). Re-score fp16, gptq8, gptq4, mag30 and mag50 in one job to save segment-level COMET/AfriCOMET scores (`sbatch -w mscluster106 run_evaluate.sh fp16 gptq8 gptq4 mag30 mag50`), then rerun `significance.py` for bootstrap intervals on all four metrics.
 6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).
