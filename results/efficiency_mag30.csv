@@ -1,0 +1,6 @@
+prefix,direction,split,sentences,seconds,sec_per_sentence,output_tokens_per_sec,gpu,model_mem_gb,peak_mem_gb
+mag30,en-fr,devtest,1012,1727.2,1.7067,24.25,Quadro RTX 8000,14.96,15.04
+mag30,en-sw,devtest,1012,3935.6,3.8889,24.56,Quadro RTX 8000,14.96,15.04
+mag30,en-zu,devtest,1012,4163.1,4.1137,24.49,Quadro RTX 8000,14.96,15.04
+mag30,sw-en,devtest,1012,1219.6,1.2052,23.7,Quadro RTX 8000,14.96,15.04
+mag30,zu-en,devtest,1012,1343.0,1.3271,23.77,Quadro RTX 8000,14.96,15.04
