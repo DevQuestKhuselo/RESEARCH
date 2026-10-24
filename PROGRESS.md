@@ -341,24 +341,34 @@ A global threshold prunes unevenly: value and output projections (v/o_proj), whi
 |  | zu→en | -66.6 [-69.5, -63.8] | -32.9 [-34.5, -31.4] | -26.2 [-28.0, -24.3] |
 | Magnitude 50% | all five | -100.0 to -99.7 | -91.6 to -85.4 | floor effect |
 
-**COMET and AfriCOMET** (relative change vs fp16, %, devtest; jobs 73094 and 73596) agree with BLEU and chrF++ in every configuration. Bootstrap intervals for them follow once segment-level scores are saved (see Next Steps).
+**COMET and AfriCOMET**, same paired bootstrap on the segment-level scores saved by `evaluate.py` (job 73820; the segment means reproduce every system score exactly). `*` marks a disparity whose 95% interval excludes zero.
 
-| Config | Metric | en→fr | en→sw | en→zu | sw→en | zu→en |
-|---|---|---|---|---|---|---|
-| GPTQ 8-bit | COMET | -0.09 | -0.01 | +0.05 | +0.03 | -0.01 |
-|  | AfriCOMET | -0.06 | -0.01 | +0.32 | +0.08 | -0.04 |
-| GPTQ 4-bit | COMET | -0.36 | -1.32 | -1.55 | -0.84 | -1.93 |
-|  | AfriCOMET | -0.94 | -2.58 | -4.86 | -1.11 | -2.99 |
-| Magnitude 30% | COMET | -2.89 | -15.68 | -14.29 | -6.06 | -14.87 |
-|  | AfriCOMET | -4.16 | -21.51 | -30.35 | -8.49 | -19.79 |
+| Config | Direction | COMET Δ% | AfriCOMET Δ% | COMET disparity (pp) | AfriCOMET disparity (pp) |
+|---|---|---|---|---|---|
+| GPTQ 8-bit | en→fr | -0.09 [-0.16, -0.01] | -0.06 [-0.19, 0.05] | (control) | (control) |
+|  | en→sw | -0.01 [-0.18, 0.17] | -0.01 [-0.28, 0.26] | +0.08 [-0.11, 0.28] | +0.05 [-0.27, 0.37] |
+|  | en→zu | +0.05 [-0.56, 0.72] | +0.32 [-0.48, 1.15] | +0.14 [-0.49, 0.81] | +0.39 [-0.42, 1.21] |
+|  | sw→en | +0.03 [-0.02, 0.08] | +0.08 [-0.01, 0.18] | +0.12 [0.03, 0.21] * | +0.15 [-0.01, 0.29] |
+|  | zu→en | -0.01 [-0.11, 0.09] | -0.04 [-0.19, 0.13] | +0.08 [-0.06, 0.21] | +0.03 [-0.17, 0.23] |
+| GPTQ 4-bit | en→fr | -0.36 [-0.64, -0.09] | -0.94 [-1.42, -0.43] | (control) | (control) |
+|  | en→sw | -1.32 [-1.85, -0.83] | -2.58 [-3.39, -1.81] | -0.96 [-1.54, -0.41] * | -1.64 [-2.65, -0.77] * |
+|  | en→zu | -1.55 [-2.55, -0.55] | -4.86 [-6.33, -3.44] | -1.19 [-2.27, -0.13] * | -3.92 [-5.47, -2.41] * |
+|  | sw→en | -0.84 [-1.11, -0.58] | -1.11 [-1.52, -0.73] | -0.47 [-0.86, -0.10] * | -0.17 [-0.77, 0.42] |
+|  | zu→en | -1.93 [-2.39, -1.53] | -2.99 [-3.59, -2.35] | -1.57 [-2.11, -1.09] * | -2.05 [-2.87, -1.27] * |
+| Magnitude 30% | en→fr | -2.89 [-3.49, -2.29] | -4.16 [-5.00, -3.43] | (control) | (control) |
+|  | en→sw | -15.68 [-17.19, -14.07] | -21.51 [-23.40, -19.69] | -12.79 [-14.46, -11.14] * | -17.35 [-19.32, -15.43] * |
+|  | en→zu | -14.29 [-15.76, -12.98] | -30.35 [-31.85, -28.90] | -11.39 [-13.00, -9.90] * | -26.19 [-27.92, -24.54] * |
+|  | sw→en | -6.06 [-6.64, -5.49] | -8.49 [-9.26, -7.75] | -3.16 [-4.02, -2.36] * | -4.33 [-5.38, -3.21] * |
+|  | zu→en | -14.87 [-15.63, -14.12] | -19.79 [-20.87, -18.83] | -11.97 [-12.94, -11.03] * | -15.63 [-16.95, -14.37] * |
+| Magnitude 50% | all five | −79.5 to −71.3 | −89.0 to −81.6 | positive (floor effect) | positive (floor effect) |
 
 **Findings so far.**
 1. **8-bit GPTQ is effectively lossless** in every direction: no change is significant and no direction degrades more than en→fr.
-2. **4-bit GPTQ degrades every direction, and all four low-resource directions significantly more than en→fr** on both BLEU and chrF++. Generation into isiZulu suffers most (−18.8% BLEU, −6.1% chrF++), then zu→en, en→sw and sw→en.
-3. **30% global magnitude pruning shows the same disparity, far amplified**: −17% BLEU for en→fr versus −69% (en→sw) and −74% (en→zu). Generation into the African languages degenerates: 22–23% of en→sw / en→zu outputs contain a trigram repeated ≥3 times (0.4% / 4.2% for fp16), and outputs grow to 1.8–2.2× the reference length (1.02–1.11× for fp16). This also explains the longer run time of mag30 at identical tokens/s.
-4. **50% global magnitude pruning collapses the model** in all directions (>99% of outputs repetitive, 5–10× reference length; 223 output tokens per sentence vs 42 for fp16), which also caused job 73098 to hit its 12-hour limit; zu→en completed on resubmission (73593). Its near-zero "disparities" are a floor effect, not evidence of robustness.
+2. **4-bit GPTQ degrades every direction, and the low-resource directions significantly more than en→fr.** All four disparities are significant on BLEU, chrF++ and COMET; on AfriCOMET three of four are, the exception being sw→en (−0.17 pp [−0.77, 0.42]). In sw→en the output is English, the case AfriCOMET (built to evaluate African-language text) is least suited to, and the other three metrics agree that sw→en degrades more. Generation into isiZulu suffers most (−18.8% BLEU, −6.1% chrF++, −4.9% AfriCOMET), then zu→en, en→sw and sw→en.
+3. **30% global magnitude pruning shows the same disparity on all four metrics (every interval excludes zero), far amplified**: −17% BLEU for en→fr versus −69% (en→sw) and −74% (en→zu). Generation into the African languages degenerates: 22–23% of en→sw / en→zu outputs contain a trigram repeated ≥3 times (0.4% / 4.2% for fp16), and outputs grow to 1.8–2.2× the reference length (1.02–1.11× for fp16). This also explains the longer run time of mag30 at identical tokens/s.
+4. **50% global magnitude pruning collapses the model** in all directions (>99% of outputs repetitive, 5–10× reference length; 223 output tokens per sentence vs 42 for fp16), which also caused job 73098 to hit its 12-hour limit; zu→en completed on resubmission (73593). Its disparities are near zero on BLEU/chrF++ and *positive* on COMET/AfriCOMET (en→fr loses the most). This is a floor effect: a collapsed model scores near the floor in every direction, so the direction that started highest loses the most. It is not evidence of robustness.
 
-**Caveats for the write-up.** Relative change on a low base is noisy: en→zu's −18.8% BLEU is −1.1 BLEU points, which is why chrF++ (higher base, character-level, better suited to agglutinative isiZulu) is the more reliable headline metric there. The disparity interval resamples each direction independently, which is conservative: the en→X directions share the same English devtest sentences. Each configuration is a single deterministic run (greedy decoding, one GPTQ calibration seed), so variation across calibration sets is not measured.
+**Caveats for the write-up.** Relative change on a low base is noisy: en→zu's −18.8% BLEU is −1.1 BLEU points, which is why chrF++ (higher base, character-level, better suited to agglutinative isiZulu) is the more reliable headline metric there. The disparity interval resamples each direction independently, which is conservative: the en→X directions share the same English devtest sentences. **Multiple comparisons.** Each configuration has 16 disparity tests (4 metrics × 4 low-resource directions). Applying Holm–Bonferroni within each configuration to the one-sided test "this direction degrades more than en→fr" (α = 0.05; bootstrap p = 0 treated as 1/1000): **GPTQ 4-bit 15/16 significant** (all but AfriCOMET sw→en), **magnitude 30% 16/16**, **GPTQ 8-bit 0/16**. The interval-based "significant" 8-bit COMET sw→en result (+0.12 pp) points the opposite way and is negligible in size. Each configuration is a single deterministic run (greedy decoding, one GPTQ calibration seed), so variation across calibration sets is not measured.
 
 **Efficiency** (`run_timing.sh`, job 73597: first 100 devtest sentences per direction, all models back-to-back with `--exclusive` on mscluster106, one Quadro RTX 8000; GPT-QModel kernel `gptq_torch`).
 
@@ -375,11 +385,10 @@ GPTQ cuts GPU memory by 42% (8-bit) and 64% (4-bit) but is **~2.4× slower** her
 
 The full fp16 re-run (69603, before the explicit-GPU fix) reports 7.48 GB on GPU 0: with `device_map="auto"` the model was most likely split across two GPUs on mscluster106. Quality is unaffected (its BLEU matches the original baseline), but its timing is not comparable, which is why timing comes only from the separate benchmark. The non-exclusive full runs were also ~16% slower than the exclusive benchmark (23.9 vs 28.5 tokens/s for fp16), confirming that shared GPUs distort latency.
 
-## 15. Immediate Next Steps
+## 15. Status and remaining work
 
-1. ~~Set up own cluster account and install `gptqmodel`~~ (done, §12). Confirm `torch.cuda.is_available()` on a healthy biggpu node.
-2. ~~`sbatch run_quantise.sh 8` and `sbatch run_quantise.sh 4`~~ (done, §13).
-3. `sbatch run_translate.sh ...` for gptq8 and gptq4, `run_timing.sh` (exclusive, mscluster106) for fp16/gptq8/gptq4, then `sbatch run_evaluate.sh baseline` (re-score, §12) and `sbatch run_evaluate.sh gptq{8,4}`.
-4. `python compute_degradation.py` for relative degradation (Δ) per the proposal's methodology (§4.11), comparing quantised-vs-baseline score drops across the five directions to test the core hypothesis.
-5. ~~Pruning: prune, translate, score~~ (done, §14). Re-score fp16, gptq8, gptq4, mag30 and mag50 in one job to save segment-level COMET/AfriCOMET scores (`sbatch -w mscluster106 run_evaluate.sh fp16 gptq8 gptq4 mag30 mag50`), then rerun `significance.py` for bootstrap intervals on all four metrics.
-6. Integrate Masakhane/LAFAND-MT as the supplementary in-domain evaluation set (currently downloaded but unused).
+All planned experiments are complete: baseline and fp16 re-run, GPTQ 8/4-bit, magnitude pruning 30/50%, all scored on four metrics with bootstrap significance, plus the efficiency benchmark.
+
+Remaining:
+1. **Write-up** (results and discussion from §14, methods from §2–§13).
+2. **Not done, for the limitations / future-work section:** the Masakhane LAFAND-MT in-domain evaluation (downloaded, not run); dev-split translations of the compressed models (dev was used for GPTQ calibration, so devtest is the headline split); the per-matrix 50% pruning sensitivity check (`sbatch run_prune.sh 50 layer`), which would show whether the 50% collapse is specific to a single global threshold; multiple GPTQ calibration seeds; latency on an Ampere-or-newer GPU, where GPT-QModel's fast kernels apply.
